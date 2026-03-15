@@ -1,0 +1,119 @@
+2026/03/10-19:52:15.428 11ff0 Creating DB /Users/emily/.openclaw/workspace/~/.openclaw/chrome-agent-data/Default/Local Storage/leveldb since it was missing.
+2026/03/10-19:52:15.432 11ff0 Reusing MANIFEST /Users/emily/.openclaw/workspace/~/.openclaw/chrome-agent-data/Default/Local Storage/leveldb/MANIFEST-000001
+2026/03/10-19:53:15.504 11ff3 Level-0 table #5: started
+2026/03/10-19:53:15.506 11ff3 Level-0 table #5: 24224 bytes OK
+2026/03/10-19:53:15.508 11ff3 Delete type=0 #3
+2026/03/10-20:36:27.691 11ff3 Level-0 table #7: started
+2026/03/10-20:36:27.694 11ff3 Level-0 table #7: 13081 bytes OK
+2026/03/10-20:36:27.697 11ff3 Delete type=0 #4
+2026/03/10-20:41:27.735 11ff3 Level-0 table #9: started
+2026/03/10-20:41:27.738 11ff3 Level-0 table #9: 6199 bytes OK
+2026/03/10-20:41:27.740 11ff3 Delete type=0 #6
+2026/03/10-20:45:27.797 11ff3 Level-0 table #11: started
+2026/03/10-20:45:27.802 11ff3 Level-0 table #11: 5897 bytes OK
+2026/03/10-20:45:27.805 11ff3 Delete type=0 #8
+2026/03/10-20:48:27.694 11ff3 Level-0 table #13: started
+2026/03/10-20:48:27.698 11ff3 Level-0 table #13: 4985 bytes OK
+2026/03/10-20:48:27.700 11ff3 Delete type=0 #10
+2026/03/10-20:51:27.756 11ff3 Level-0 table #15: started
+2026/03/10-20:51:27.758 11ff3 Level-0 table #15: 5434 bytes OK
+2026/03/10-20:51:27.760 11ff3 Delete type=0 #12
+2026/03/10-20:51:27.760 11ff3 Compacting 4@0 + 1@1 files
+2026/03/10-20:51:27.763 11ff3 Generated table #16@0: 27 keys, 5738 bytes
+2026/03/10-20:51:27.763 11ff3 Compacted 4@0 + 1@1 files => 5738 bytes
+2026/03/10-20:51:27.764 11ff3 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/03/10-20:51:27.765 11ff3 Delete type=2 #15
+2026/03/10-20:51:27.765 11ff3 Delete type=2 #7
+2026/03/10-20:51:27.765 11ff3 Delete type=2 #13
+2026/03/10-20:51:27.765 11ff3 Delete type=2 #11
+2026/03/10-20:51:27.765 11ff3 Delete type=2 #9
+2026/03/10-20:54:27.744 11ff3 Level-0 table #18: started
+2026/03/10-20:54:27.747 11ff3 Level-0 table #18: 5885 bytes OK
+2026/03/10-20:54:27.750 11ff3 Delete type=0 #14
+2026/03/10-20:57:27.847 11ff3 Level-0 table #20: started
+2026/03/10-20:57:27.851 11ff3 Level-0 table #20: 6338 bytes OK
+2026/03/10-20:57:27.853 11ff3 Delete type=0 #17
+2026/03/10-20:59:27.804 11ff3 Level-0 table #22: started
+2026/03/10-20:59:27.807 11ff3 Level-0 table #22: 4516 bytes OK
+2026/03/10-20:59:27.809 11ff3 Delete type=0 #19
+2026/03/10-21:01:27.807 11ff3 Level-0 table #24: started
+2026/03/10-21:01:27.810 11ff3 Level-0 table #24: 4715 bytes OK
+2026/03/10-21:01:27.814 11ff3 Delete type=0 #21
+2026/03/10-21:01:27.814 11ff3 Compacting 4@0 + 1@1 files
+2026/03/10-21:01:27.817 11ff3 Generated table #25@0: 27 keys, 6239 bytes
+2026/03/10-21:01:27.817 11ff3 Compacted 4@0 + 1@1 files => 6239 bytes
+2026/03/10-21:01:27.818 11ff3 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/03/10-21:01:27.819 11ff3 Delete type=2 #16
+2026/03/10-21:01:27.819 11ff3 Delete type=2 #20
+2026/03/10-21:01:27.819 11ff3 Delete type=2 #22
+2026/03/10-21:01:27.819 11ff3 Delete type=2 #18
+2026/03/10-21:01:27.819 11ff3 Delete type=2 #24
+2026/03/10-21:03:27.823 11ff3 Level-0 table #27: started
+2026/03/10-21:03:27.827 11ff3 Level-0 table #27: 4917 bytes OK
+2026/03/10-21:03:27.830 11ff3 Delete type=0 #23
+2026/03/10-21:05:27.901 11ff3 Level-0 table #29: started
+2026/03/10-21:05:27.904 11ff3 Level-0 table #29: 5117 bytes OK
+2026/03/10-21:05:27.905 11ff3 Delete type=0 #26
+2026/03/10-21:07:27.870 11ff3 Level-0 table #31: started
+2026/03/10-21:07:27.873 11ff3 Level-0 table #31: 5316 bytes OK
+2026/03/10-21:07:27.874 11ff3 Delete type=0 #28
+2026/03/10-21:09:27.900 11ff3 Level-0 table #33: started
+2026/03/10-21:09:27.901 11ff3 Level-0 table #33: 5517 bytes OK
+2026/03/10-21:09:27.903 11ff3 Delete type=0 #30
+2026/03/10-21:09:27.903 11ff3 Compacting 4@0 + 1@1 files
+2026/03/10-21:09:27.905 11ff3 Generated table #34@0: 27 keys, 6640 bytes
+2026/03/10-21:09:27.906 11ff3 Compacted 4@0 + 1@1 files => 6640 bytes
+2026/03/10-21:09:27.906 11ff3 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/03/10-21:09:27.907 11ff3 Delete type=2 #29
+2026/03/10-21:09:27.907 11ff3 Delete type=2 #33
+2026/03/10-21:09:27.907 11ff3 Delete type=2 #27
+2026/03/10-21:09:27.907 11ff3 Delete type=2 #31
+2026/03/10-21:09:27.907 11ff3 Delete type=2 #25
+2026/03/10-21:11:27.943 11ff3 Level-0 table #36: started
+2026/03/10-21:11:27.945 11ff3 Level-0 table #36: 5716 bytes OK
+2026/03/10-21:11:27.948 11ff3 Delete type=0 #32
+2026/03/10-21:13:27.911 11ff3 Level-0 table #38: started
+2026/03/10-21:13:27.916 11ff3 Level-0 table #38: 5917 bytes OK
+2026/03/10-21:13:27.917 11ff3 Delete type=0 #35
+2026/03/10-21:15:28.002 11ff3 Level-0 table #40: started
+2026/03/10-21:15:28.005 11ff3 Level-0 table #40: 6118 bytes OK
+2026/03/10-21:15:28.007 11ff3 Delete type=0 #37
+2026/03/10-21:17:27.960 11ff3 Level-0 table #42: started
+2026/03/10-21:17:27.961 11ff3 Level-0 table #42: 6316 bytes OK
+2026/03/10-21:17:27.963 11ff3 Delete type=0 #39
+2026/03/10-21:17:27.963 11ff3 Compacting 4@0 + 1@1 files
+2026/03/10-21:17:27.967 11ff3 Generated table #43@0: 27 keys, 7040 bytes
+2026/03/10-21:17:27.967 11ff3 Compacted 4@0 + 1@1 files => 7040 bytes
+2026/03/10-21:17:27.968 11ff3 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/03/10-21:17:27.968 11ff3 Delete type=2 #38
+2026/03/10-21:17:27.968 11ff3 Delete type=2 #34
+2026/03/10-21:17:27.968 11ff3 Delete type=2 #36
+2026/03/10-21:17:27.968 11ff3 Delete type=2 #42
+2026/03/10-21:17:27.968 11ff3 Delete type=2 #40
+2026/03/10-21:19:28.041 11ff3 Level-0 table #45: started
+2026/03/10-21:19:28.051 11ff3 Level-0 table #45: 6520 bytes OK
+2026/03/10-21:19:28.056 11ff3 Delete type=0 #41
+2026/03/10-21:21:28.041 11ff3 Level-0 table #47: started
+2026/03/10-21:21:28.044 11ff3 Level-0 table #47: 6718 bytes OK
+2026/03/10-21:21:28.047 11ff3 Delete type=0 #44
+2026/03/10-21:23:28.078 11ff3 Level-0 table #49: started
+2026/03/10-21:23:28.082 11ff3 Level-0 table #49: 6919 bytes OK
+2026/03/10-21:23:28.085 11ff3 Delete type=0 #46
+2026/03/10-21:25:28.112 11ff3 Level-0 table #51: started
+2026/03/10-21:25:28.114 11ff3 Level-0 table #51: 7119 bytes OK
+2026/03/10-21:25:28.115 11ff3 Delete type=0 #48
+2026/03/10-21:25:28.116 11ff3 Compacting 4@0 + 1@1 files
+2026/03/10-21:25:28.119 11ff3 Generated table #52@0: 27 keys, 7441 bytes
+2026/03/10-21:25:28.119 11ff3 Compacted 4@0 + 1@1 files => 7441 bytes
+2026/03/10-21:25:28.120 11ff3 compacted to: files[ 0 1 1 0 0 0 0 ]
+2026/03/10-21:25:28.121 11ff3 Delete type=2 #49
+2026/03/10-21:25:28.121 11ff3 Delete type=2 #43
+2026/03/10-21:25:28.121 11ff3 Delete type=2 #45
+2026/03/10-21:25:28.121 11ff3 Delete type=2 #51
+2026/03/10-21:25:28.122 11ff3 Delete type=2 #47
+2026/03/10-21:26:28.131 11ff3 Level-0 table #54: started
+2026/03/10-21:26:28.133 11ff3 Level-0 table #54: 3655 bytes OK
+2026/03/10-21:26:28.135 11ff3 Delete type=0 #50
+2026/03/10-21:27:28.148 11ff3 Level-0 table #56: started
+2026/03/10-21:27:28.151 11ff3 Level-0 table #56: 3706 bytes OK
+2026/03/10-21:27:28.154 11ff3 Delete type=0 #53

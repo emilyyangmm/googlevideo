@@ -1,0 +1,11 @@
+{
+  "screen_time": "2026-03-11T20:24:04.469909",
+  "scope": "hs300",
+  "filters": {
+    "pe_max": 50.0,
+    "pb_max": 5.0,
+    "roe_min": 5.0
+  },
+  "count": 0,
+  "results": []
+}

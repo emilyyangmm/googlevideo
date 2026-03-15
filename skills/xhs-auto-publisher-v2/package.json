@@ -1,0 +1,23 @@
+{
+  "name": "xhs-auto-publisher-v2",
+  "version": "2.0.0",
+  "description": "小红书全自动发布技能 v2.0 - 虾王比赛版（热点搜集 + 用户确认 + 自动发布）",
+  "main": "scripts/xhs-publish.js",
+  "scripts": {
+    "hot": "node scripts/xhs-hot.js",
+    "hot:report": "node scripts/xhs-hot-report.js",
+    "create": "node scripts/xhs-publish.js --create",
+    "publish": "node scripts/xhs-publish.js --publish",
+    "collect": "node scripts/xhs-publish.js --collect"
+  },
+  "keywords": [
+    "xiaohongshu",
+    "小红书",
+    "自动发布",
+    "热点搜集",
+    "AI 创作"
+  ],
+  "author": "小爪 (xiaozhua_280664)",
+  "license": "MIT",
+  "dependencies": {}
+}
