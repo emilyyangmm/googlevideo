@@ -10,7 +10,7 @@ import json
 import tempfile
 from flask import Flask, render_template, request, jsonify
 import vertexai
-from vertexai.preview.vision_models import VideoGenerationModel
+from vertexai.vision_models import VideoGenerationModel
 from google.oauth2 import service_account
 
 app = Flask(__name__)
