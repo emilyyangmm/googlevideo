@@ -19,16 +19,31 @@ def get_access_token():
     """从服务账号获取 access token"""
     try:
         credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-        if credentials_path and os.path.exists(credentials_path):
-            credentials = service_account.Credentials.from_service_account_file(
-                credentials_path,
-                scopes=['https://www.googleapis.com/auth/cloud-platform']
-            )
-            credentials.refresh(requests.Request())
-            return credentials.token
-        return None
+        print(f"🔍 检查服务账号文件路径：{credentials_path}")
+        
+        if not credentials_path:
+            print("❌ 环境变量 GOOGLE_APPLICATION_CREDENTIALS 未设置")
+            return None
+        
+        if not os.path.exists(credentials_path):
+            print(f"❌ 文件不存在：{credentials_path}")
+            print(f"📁 当前目录：{os.getcwd()}")
+            print(f"📂 /etc/secrets/ 目录内容：{os.listdir('/etc/secrets/') if os.path.exists('/etc/secrets/') else '目录不存在'}")
+            return None
+        
+        print(f"✅ 文件存在，加载服务账号：{credentials_path}")
+        credentials = service_account.Credentials.from_service_account_file(
+            credentials_path,
+            scopes=['https://www.googleapis.com/auth/cloud-platform']
+        )
+        print("✅ 服务账号加载成功，刷新 token...")
+        credentials.refresh(requests.Request())
+        print("✅ Token 刷新成功")
+        return credentials.token
     except Exception as e:
+        import traceback
         print(f"❌ 获取 token 失败：{str(e)}")
+        print(f"📋 详细堆栈：{traceback.format_exc()}")
         return None
 
 # 首页路由
