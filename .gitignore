@@ -1,28 +1,13 @@
-# 敏感数据和缓存
-~/.openclaw/chrome-agent-data/
+# 忽略所有文件
+/*
+
+# 只保留 Veo 应用
+!app.py
+!index.html
+!requirements.txt
+!README.md
+
+# 忽略系统文件
+.DS_Store
 *.log
 .env
-*.json
-!package.json
-!tsconfig.json
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-env/
-ENV/
-node_modules/
-
-# 输出文件
-output/
-*.mp4
-*.jpg
-*.png
-
-# 系统文件
-.DS_Store
-Thumbs.db
