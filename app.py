@@ -119,15 +119,19 @@ def generate_video():
         "Content-Type": "application/json"
     }
     
-    # Veo API 请求格式（根据网页版）
+    # Veo API 请求格式（正确的 REST API 格式）
     payload = {
-        "prompt": prompt,
-        "aspectRatio": aspect_ratio,
-        "durationSeconds": duration,
-        "numberOfVideos": 1,
-        "personGeneration": "allow_all",
-        "generateAudio": False,
-        "resolution": "720p"
+        "instances": [
+            {
+                "prompt": prompt
+            }
+        ],
+        "parameters": {
+            "aspectRatio": aspect_ratio,
+            "durationSeconds": duration,
+            "numberOfVideos": 1,
+            "personGeneration": "allow_all"
+        }
     }
     
     try:
