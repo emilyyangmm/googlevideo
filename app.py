@@ -108,7 +108,11 @@ def generate_video():
         }), 401
     
     # 构建 API 请求（Vertex AI API）
-    url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-3.1-fast-generate-001:predictLongRunning"
+    # Veo 模型的正确端点格式
+    model_id = "veo-3.1-fast-generate-001"
+    
+    # 格式 1: publishers 模式（推荐）
+    url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{model_id}:predictLongRunning"
     
     headers = {
         "Authorization": f"Bearer {access_token}",
@@ -138,7 +142,8 @@ def generate_video():
         response = requests.post(url, headers=headers, json=payload, timeout=120)
         
         print(f"\n响应状态码：{response.status_code}")
-        print(f"响应内容：{response.text[:500] if response.text else 'Empty'}")
+        print(f"响应头：{dict(response.headers)}")
+        print(f"响应内容：{response.text[:1000] if response.text else 'Empty'}")
         
         if response.status_code == 200:
             operation = response.json()
