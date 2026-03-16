@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: googlevideo
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: GOOGLE_CLOUD_PROJECT
+        sync: false
+      - key: GOOGLE_CLOUD_LOCATION
+        sync: false
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        sync: false
