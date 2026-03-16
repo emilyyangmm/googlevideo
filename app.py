@@ -193,11 +193,23 @@ def check_status():
             logger.error("❌ 认证失败")
             return jsonify({'error': '认证失败'}), 500
         
-        # 清理 operation_name（去掉可能的 projects/ 前缀）
-        if operation_name.startswith('projects/'):
-            clean_operation_name = operation_name
-        else:
-            clean_operation_name = operation_name
+        # 清理 operation_name
+        # Google Cloud 返回的格式：projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
+        # 但查询时需要简化为：projects/xxx/locations/xxx/operations/xxx
+        
+        clean_operation_name = operation_name
+        
+        # 如果是完整的 publishers 路径，简化它
+        if '/publishers/google/models/' in operation_name:
+            # 提取项目、区域和操作 ID
+            parts = operation_name.split('/')
+            if len(parts) >= 10:
+                # parts: ['projects', 'xxx', 'locations', 'xxx', 'publishers', 'google', 'models', 'xxx', 'operations', 'xxx']
+                project_id = parts[1]
+                location = parts[3]
+                operation_id = parts[9]
+                clean_operation_name = f"projects/{project_id}/locations/{location}/operations/{operation_id}"
+                logger.info(f"🔄 简化 operation 名称：{operation_name} -> {clean_operation_name}")
         
         # 查询操作状态
         url = f"https://aiplatform.googleapis.com/v1/{clean_operation_name}"
@@ -209,6 +221,15 @@ def check_status():
         
         logger.info(f"📊 响应状态码：{response.status_code}")
         logger.info(f"📄 响应内容：{response.text[:500] if response.text else 'Empty'}")
+        
+        # 处理非 JSON 响应
+        if response.status_code != 200:
+            if 'text/html' in response.headers.get('Content-Type', ''):
+                logger.error(f"❌ 返回了 HTML 页面而不是 JSON，可能是 URL 格式错误")
+                return jsonify({
+                    'error': f'查询失败：API 返回 404，请检查 operation 名称格式',
+                    'operation_name': operation_name
+                }), 404
         
         if response.status_code == 200:
             operation = response.json()
