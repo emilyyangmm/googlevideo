@@ -26,9 +26,12 @@ SERVICE_ACCOUNT_FILE_PATH = None
 
 # 优先使用 API Key，其次使用服务账号
 if API_KEY:
-    print(f"✅ 使用 API Key 认证：***{API_KEY[-4:]}")
+    print(f"✅ 使用 API Key 认证：***{API_KEY[-10:]}")
     # API Key 方式：设置环境变量
     os.environ["GOOGLE_API_KEY"] = API_KEY
+    # 如果是 AQ. 开头的临时 Token，也尝试使用
+    if API_KEY.startswith("AQ."):
+        print("⚠️  检测到 AQ. 开头的 Token，可能是临时认证")
 elif SERVICE_ACCOUNT_JSON and len(SERVICE_ACCOUNT_JSON) > 100:
     try:
         json_data = json.loads(SERVICE_ACCOUNT_JSON)
