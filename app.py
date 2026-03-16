@@ -45,11 +45,28 @@ def index():
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """健康检查接口"""
+    # 测试 API Key 是否有效
+    api_key_test = None
+    if API_KEY:
+        try:
+            # 尝试调用 API Keys API 检查密钥
+            test_url = f"https://cloudresourcemanager.googleapis.com/v1/projects/{PROJECT_ID}?key={API_KEY}"
+            test_resp = requests.get(test_url, timeout=5)
+            api_key_test = {
+                'valid': test_resp.status_code == 200,
+                'status_code': test_resp.status_code,
+                'response': test_resp.text[:200] if test_resp.text else 'Empty'
+            }
+        except Exception as e:
+            api_key_test = {'error': str(e)}
+    
     return jsonify({
         'status': 'ok',
         'project_id': PROJECT_ID,
+        'location': LOCATION,
         'has_api_key': bool(API_KEY),
-        'has_service_account': bool(SERVICE_ACCOUNT_FILE)
+        'has_service_account': bool(SERVICE_ACCOUNT_FILE),
+        'api_key_test': api_key_test
     })
 
 @app.route('/api/generate', methods=['POST'])
@@ -90,12 +107,13 @@ def generate_video():
         }), 401
     
     # 构建 API 请求
-    # 使用 API Key 时，通过 Vertex AI 端点
+    # 使用 API Key 时，通过 Vertex AI 端点（带 key 参数）
     if api_key:
-        # 注意：PROJECT_ID 应该从 API Key 所属项目获取，这里使用环境变量
         url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-3.1-fast-generate-001:predictLongRunning"
+        # API Key 作为查询参数
         params = {'key': api_key}
         headers = {"Content-Type": "application/json"}
+        print(f"使用 API Key 认证，项目：{PROJECT_ID}")
     else:
         url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-3.1-fast-generate-001:predictLongRunning"
         params = {}
@@ -103,6 +121,7 @@ def generate_video():
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
+        print(f"使用服务账号认证，项目：{PROJECT_ID}")
     
     payload = {
         "instances": [{"prompt": prompt}],
