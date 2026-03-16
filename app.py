@@ -24,18 +24,22 @@ SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
 SERVICE_ACCOUNT_FILE_PATH = None
 
 # 如果配置的是 JSON 字符串，保存到临时文件
-if SERVICE_ACCOUNT_JSON and SERVICE_ACCOUNT_JSON.strip().startswith('{'):
+print(f"DEBUG: SERVICE_ACCOUNT_JSON length = {len(SERVICE_ACCOUNT_JSON) if SERVICE_ACCOUNT_JSON else 0}")
+if SERVICE_ACCOUNT_JSON and len(SERVICE_ACCOUNT_JSON) > 100:
     try:
-        json.loads(SERVICE_ACCOUNT_JSON)
+        # 验证 JSON 格式
+        json_data = json.loads(SERVICE_ACCOUNT_JSON)
         temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
         temp_file.write(SERVICE_ACCOUNT_JSON)
         temp_file.close()
         SERVICE_ACCOUNT_FILE_PATH = temp_file.name
-        print(f"✅ 服务账号配置成功：{SERVICE_ACCOUNT_FILE_PATH}")
-        # 设置环境变量供 SDK 使用
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = SERVICE_ACCOUNT_FILE_PATH
+        print(f"✅ 服务账号配置成功：{SERVICE_ACCOUNT_FILE_PATH}")
+        print(f"✅ 项目 ID: {json_data.get('project_id', 'unknown')}")
     except Exception as e:
         print(f"❌ 服务账号 JSON 格式错误：{e}")
+        import traceback
+        traceback.print_exc()
 
 # 内存存储操作状态
 operations_cache = {}
