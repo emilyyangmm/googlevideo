@@ -18,7 +18,7 @@ CORS(app)
 
 # 配置
 PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
-LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "global")
+LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")  # Veo 需要 us-central1
 SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
 API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 
@@ -108,24 +108,26 @@ def generate_video():
         }), 401
     
     # 构建 API 请求（Vertex AI API）
-    # Veo 模型的端点 - 使用正确的 API 版本和路径
-    model_id = "veo-3.1-fast-generate-001"
+    # Veo 模型的正确名称和端点
+    model_id = "veo-3.1-generate-001"  # 网页版使用的模型名称
     
-    # 使用 v1beta1 API（Veo 可能需要 beta 版本）
-    url = f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{model_id}:predictLongRunning"
+    # 使用 v1 API
+    url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{model_id}:predictLongRunning"
     
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
     
-    # Veo API 请求格式
+    # Veo API 请求格式（根据网页版）
     payload = {
         "prompt": prompt,
-        "video": {
-            "aspectRatio": aspect_ratio,
-            "durationSeconds": duration
-        }
+        "aspectRatio": aspect_ratio,
+        "durationSeconds": duration,
+        "numberOfVideos": 1,
+        "personGeneration": "allow_all",
+        "generateAudio": False,
+        "resolution": "720p"
     }
     
     try:
