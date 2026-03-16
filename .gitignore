@@ -1,0 +1,28 @@
+# 敏感数据和缓存
+~/.openclaw/chrome-agent-data/
+*.log
+.env
+*.json
+!package.json
+!tsconfig.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+node_modules/
+
+# 输出文件
+output/
+*.mp4
+*.jpg
+*.png
+
+# 系统文件
+.DS_Store
+Thumbs.db
