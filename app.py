@@ -104,7 +104,8 @@ def generate_video():
         
         print(f"✅ SDK 客户端已创建，认证方式：{'API Key' if API_KEY else '服务账号'}")
         
-        # 创建视频生成请求
+        # 创建视频生成请求（根据网页版官方示例）
+        # 参考：https://console.cloud.google.com/vertex-ai/studio/settings/api-keys?project=red-atlas-490409-v1
         source = types.GenerateVideosSource(
             prompt=prompt,
         )
@@ -114,7 +115,6 @@ def generate_video():
             number_of_videos=1,
             duration_seconds=duration,
             person_generation="allow_all",
-            resolution="720p",
         )
         
         # 生成视频
