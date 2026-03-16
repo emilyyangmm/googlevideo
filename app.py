@@ -18,8 +18,21 @@ CORS(app)
 # 配置
 PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
 LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "global")
-SERVICE_ACCOUNT_FILE = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")  # JSON 字符串
+SERVICE_ACCOUNT_FILE = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE")  # 文件路径（可选）
 API_KEY = os.environ.get("GOOGLE_API_KEY", "")
+
+# 如果配置的是 JSON 字符串，保存到临时文件
+SERVICE_ACCOUNT_FILE_PATH = None
+if SERVICE_ACCOUNT_JSON and SERVICE_ACCOUNT_JSON.strip().startswith('{'):
+    import tempfile
+    temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+    temp_file.write(SERVICE_ACCOUNT_JSON)
+    temp_file.close()
+    SERVICE_ACCOUNT_FILE_PATH = temp_file.name
+    print(f"服务账号 JSON 已保存到临时文件：{SERVICE_ACCOUNT_FILE_PATH}")
+elif SERVICE_ACCOUNT_FILE and os.path.exists(SERVICE_ACCOUNT_FILE):
+    SERVICE_ACCOUNT_FILE_PATH = SERVICE_ACCOUNT_FILE
 
 # 内存存储操作状态
 operations_cache = {}
@@ -86,13 +99,13 @@ def generate_video():
     
     if not api_key:
         # 尝试从服务账号获取 token
-        if SERVICE_ACCOUNT_FILE and os.path.exists(SERVICE_ACCOUNT_FILE):
+        if SERVICE_ACCOUNT_FILE_PATH:
             try:
                 from google.oauth2 import service_account
                 from google.auth.transport.requests import Request
                 
                 credentials = service_account.Credentials.from_service_account_file(
-                    SERVICE_ACCOUNT_FILE,
+                    SERVICE_ACCOUNT_FILE_PATH,
                     scopes=['https://www.googleapis.com/auth/cloud-platform']
                 )
                 credentials.refresh(Request())
