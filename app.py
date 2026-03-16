@@ -114,7 +114,6 @@ def generate_video():
             number_of_videos=1,
             duration_seconds=duration,
             person_generation="allow_all",
-            generate_audio=False,
             resolution="720p",
         )
         
