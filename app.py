@@ -11,6 +11,7 @@ import tempfile
 from flask import Flask, render_template, request, jsonify
 import vertexai
 from vertexai.preview.vision_models import VideoGenerationModel
+from google.oauth2 import service_account
 
 app = Flask(__name__)
 
@@ -25,27 +26,19 @@ def init_vertex_ai():
         # 检查是否有服务账号 JSON 文件路径
         credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         
+        credentials = None
         if credentials_path and os.path.exists(credentials_path):
-            # ✅ 正确：显式传入 credentials_path 参数
-            vertexai.init(
-                project=project_id, 
-                location=location, 
-                credentials_path=credentials_path
-            )
-            print(f"✅ 使用服务账号文件认证：{credentials_path}")
-            return True
-        else:
-            # 尝试默认认证
-            if credentials_path:
-                print(f"⚠️ 凭证文件不存在：{credentials_path}")
-            
-            if project_id and location:
-                vertexai.init(project=project_id, location=location)
-                print("⚠️ 使用默认凭证")
-                return True
-            else:
-                print("❌ 缺少项目 ID 或区域配置")
-                return False
+            # ✅ 正确：先加载凭证对象
+            credentials = service_account.Credentials.from_service_account_file(credentials_path)
+            print(f"✅ 已加载服务账号文件：{credentials_path}")
+        
+        # 初始化 SDK
+        vertexai.init(
+            project=project_id,
+            location=location,
+            credentials=credentials
+        )
+        return True
         
     except Exception as e:
         print(f"❌ Vertex AI 初始化失败：{str(e)}")
@@ -76,21 +69,22 @@ def generate_video():
                 'error': 'Vertex AI 初始化失败，请检查服务账号配置'
             }), 500
         
-        # 加载 Veo 模型
-        try:
-            model = VideoGenerationModel.from_pretrained("veo-3.0-generate-preview")
-            print("✅ Veo 模型加载成功")
-        except Exception as e:
-            print(f"❌ 模型加载失败：{str(e)}")
-            # 尝试备用模型名称
+        # 加载 Veo 模型（优先使用 veo-3.1）
+        model = None
+        for model_id in ["veo-3.1-generate-preview", "veo-3.0-generate-preview"]:
             try:
-                model = VideoGenerationModel.from_pretrained("veo-3.1-generate-preview")
-                print("✅ 使用备用模型 veo-3.1 加载成功")
-            except:
-                return jsonify({
-                    'success': False,
-                    'error': f'Veo 模型加载失败：{str(e)}。请确认模型名称是否正确'
-                }), 500
+                model = VideoGenerationModel.from_pretrained(model_id)
+                print(f"✅ Veo 模型加载成功：{model_id}")
+                break
+            except Exception as e:
+                print(f"⚠️ 模型 {model_id} 加载失败：{str(e)}")
+                continue
+        
+        if not model:
+            return jsonify({
+                'success': False,
+                'error': 'Veo 模型加载失败，请确认模型名称是否正确'
+            }), 500
         
         # 生成视频
         try:
@@ -101,7 +95,7 @@ def generate_video():
                 prompt=prompt,
                 duration_seconds=8,  # 5-8 秒
                 aspect_ratio="16:9",
-                person_generation="allow_adult",
+                person_generation="dont_allow",  # 使用默认安全设置
             )
             
             print(f"✅ 视频生成成功!")
