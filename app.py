@@ -26,17 +26,27 @@ def init_vertex_ai():
         credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         
         if credentials_path and os.path.exists(credentials_path):
-            # 使用服务账号 JSON 文件认证
-            vertexai.init(project=project_id, location=location)
+            # ✅ 正确：显式传入 credentials_path 参数
+            vertexai.init(
+                project=project_id, 
+                location=location, 
+                credentials_path=credentials_path
+            )
             print(f"✅ 使用服务账号文件认证：{credentials_path}")
+            return True
         else:
             # 尝试默认认证
             if credentials_path:
                 print(f"⚠️ 凭证文件不存在：{credentials_path}")
-            vertexai.init(project=project_id, location=location)
-            print("⚠️ 使用默认凭证")
+            
+            if project_id and location:
+                vertexai.init(project=project_id, location=location)
+                print("⚠️ 使用默认凭证")
+                return True
+            else:
+                print("❌ 缺少项目 ID 或区域配置")
+                return False
         
-        return True
     except Exception as e:
         print(f"❌ Vertex AI 初始化失败：{str(e)}")
         return False
@@ -72,10 +82,15 @@ def generate_video():
             print("✅ Veo 模型加载成功")
         except Exception as e:
             print(f"❌ 模型加载失败：{str(e)}")
-            return jsonify({
-                'success': False,
-                'error': f'Veo 模型加载失败：{str(e)}'
-            }), 500
+            # 尝试备用模型名称
+            try:
+                model = VideoGenerationModel.from_pretrained("veo-3.1-generate-preview")
+                print("✅ 使用备用模型 veo-3.1 加载成功")
+            except:
+                return jsonify({
+                    'success': False,
+                    'error': f'Veo 模型加载失败：{str(e)}。请确认模型名称是否正确'
+                }), 500
         
         # 生成视频
         try:
@@ -103,9 +118,15 @@ def generate_video():
             
         except Exception as e:
             print(f"❌ 视频生成失败：{str(e)}")
+            error_msg = str(e)
+            if "quota" in error_msg.lower():
+                error_msg = "配额不足，请检查 Vertex AI 配额设置"
+            elif "permission" in error_msg.lower():
+                error_msg = "权限不足，请确保服务账号有 Vertex AI User 角色"
+            
             return jsonify({
                 'success': False,
-                'error': f'视频生成失败：{str(e)}'
+                'error': f'视频生成失败：{error_msg}'
             }), 500
         
     except Exception as e:
@@ -121,4 +142,5 @@ def health():
     return jsonify({'status': 'healthy'})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 8080)))
+    port = int(os.getenv('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)  # 生产环境关闭 debug
