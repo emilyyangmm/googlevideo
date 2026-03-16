@@ -7,6 +7,7 @@ Google Veo 视频生成 Web 应用后端
 
 import os
 import json
+import time
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import requests
@@ -92,7 +93,14 @@ def generate_video():
     }
     
     try:
+        print(f"Calling API: {url}")
+        print(f"API Key: {'***' + api_key[-4:] if api_key else 'None'}")
+        print(f"Project ID: {PROJECT_ID}")
+        
         response = requests.post(url, headers=headers, json=payload)
+        
+        print(f"Response status: {response.status_code}")
+        print(f"Response body: {response.text[:500] if response.text else 'Empty'}")
         
         if response.status_code == 200:
             operation = response.json()
@@ -108,10 +116,15 @@ def generate_video():
                 'message': '任务已提交，正在生成视频...'
             })
         else:
-            error_msg = response.json().get('error', {}).get('message', '未知错误')
+            try:
+                error_data = response.json()
+                error_msg = error_data.get('error', {}).get('message', '未知错误')
+            except:
+                error_msg = f'HTTP {response.status_code}: {response.text[:200]}'
             return jsonify({'error': f'API 调用失败：{error_msg}'}), response.status_code
             
     except Exception as e:
+        print(f"Exception: {e}")
         return jsonify({'error': f'请求失败：{str(e)}'}), 500
 
 @app.route('/api/status', methods=['GET'])
