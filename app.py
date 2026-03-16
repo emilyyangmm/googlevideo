@@ -6,9 +6,11 @@ Google Veo 视频生成 Web 应用后端
 """
 
 import os
+import sys
 import json
 import tempfile
 import requests
+import traceback
 from flask import Flask, render_template, request, jsonify
 from google.oauth2 import service_account
 
@@ -19,31 +21,56 @@ def get_access_token():
     """从服务账号获取 access token"""
     try:
         credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-        print(f"🔍 检查服务账号文件路径：{credentials_path}")
+        msg = f"🔍 检查服务账号文件路径：{credentials_path}"
+        print(msg, flush=True)
+        sys.stdout.flush()
         
         if not credentials_path:
-            print("❌ 环境变量 GOOGLE_APPLICATION_CREDENTIALS 未设置")
+            msg = "❌ 环境变量 GOOGLE_APPLICATION_CREDENTIALS 未设置"
+            print(msg, flush=True)
+            sys.stdout.flush()
             return None
         
         if not os.path.exists(credentials_path):
-            print(f"❌ 文件不存在：{credentials_path}")
-            print(f"📁 当前目录：{os.getcwd()}")
-            print(f"📂 /etc/secrets/ 目录内容：{os.listdir('/etc/secrets/') if os.path.exists('/etc/secrets/') else '目录不存在'}")
+            msg = f"❌ 文件不存在：{credentials_path}"
+            print(msg, flush=True)
+            sys.stdout.flush()
+            msg = f"📁 当前目录：{os.getcwd()}"
+            print(msg, flush=True)
+            sys.stdout.flush()
+            secrets_dir = '/etc/secrets/'
+            if os.path.exists(secrets_dir):
+                msg = f"📂 /etc/secrets/ 目录内容：{os.listdir(secrets_dir)}"
+                print(msg, flush=True)
+                sys.stdout.flush()
+            else:
+                msg = "📂 /etc/secrets/ 目录不存在"
+                print(msg, flush=True)
+                sys.stdout.flush()
             return None
         
-        print(f"✅ 文件存在，加载服务账号：{credentials_path}")
+        msg = f"✅ 文件存在，加载服务账号：{credentials_path}"
+        print(msg, flush=True)
+        sys.stdout.flush()
         credentials = service_account.Credentials.from_service_account_file(
             credentials_path,
             scopes=['https://www.googleapis.com/auth/cloud-platform']
         )
-        print("✅ 服务账号加载成功，刷新 token...")
+        msg = "✅ 服务账号加载成功，刷新 token..."
+        print(msg, flush=True)
+        sys.stdout.flush()
         credentials.refresh(requests.Request())
-        print("✅ Token 刷新成功")
+        msg = "✅ Token 刷新成功"
+        print(msg, flush=True)
+        sys.stdout.flush()
         return credentials.token
     except Exception as e:
-        import traceback
-        print(f"❌ 获取 token 失败：{str(e)}")
-        print(f"📋 详细堆栈：{traceback.format_exc()}")
+        msg = f"❌ 获取 token 失败：{str(e)}"
+        print(msg, flush=True)
+        sys.stdout.flush()
+        msg = f"📋 详细堆栈：{traceback.format_exc()}"
+        print(msg, flush=True)
+        sys.stdout.flush()
         return None
 
 # 首页路由
@@ -59,10 +86,15 @@ def generate_video():
         data = request.json
         prompt = data.get('prompt', '')
         
-        if not prompt:
-            return jsonify({'success': False, 'error': '请提供提示词'}), 400
+        msg = f"🎬 收到生成请求，提示词：{prompt}"
+        print(msg, flush=True)
+        sys.stdout.flush()
         
-        print(f"🎬 开始生成视频，提示词：{prompt}")
+        if not prompt:
+            msg = "❌ 提示词为空"
+            print(msg, flush=True)
+            sys.stdout.flush()
+            return jsonify({'success': False, 'error': '请提供提示词'}), 400
         
         # 获取认证 token
         access_token = get_access_token()
