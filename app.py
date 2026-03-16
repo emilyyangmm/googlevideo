@@ -115,6 +115,7 @@ def generate_video():
             number_of_videos=1,
             duration_seconds=duration,
             person_generation="allow_all",
+            # 移除 generate_audio 和 resolution，这些可能导致错误
         )
         
         # 生成视频
