@@ -10,7 +10,7 @@ import json
 import tempfile
 from flask import Flask, render_template, request, jsonify
 import vertexai
-from vertexai.vision_models import VideoGenerationModel
+from vertexai import vision_models
 from google.oauth2 import service_account
 
 app = Flask(__name__)
@@ -80,7 +80,7 @@ def generate_video():
             "veo-2.0-generate-001",      # Veo 2.0
         ]:
             try:
-                model = VideoGenerationModel.from_pretrained(model_id)
+                model = vision_models.VideoGenerationModel.from_pretrained(model_id)
                 print(f"✅ Veo 模型加载成功：{model_id}")
                 break
             except Exception as e:
