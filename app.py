@@ -111,8 +111,8 @@ def generate_video():
     # Veo 模型的正确名称和端点
     model_id = "veo-3.1-generate-001"  # 网页版使用的模型名称
     
-    # 使用 v1 API
-    url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{model_id}:predictLongRunning"
+    # 使用 v1 API - 正确的端点格式
+    url = f"https://aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{model_id}:predictLongRunning"
     
     headers = {
         "Authorization": f"Bearer {access_token}",
