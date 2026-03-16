@@ -108,22 +108,22 @@ def generate_video():
         }), 401
     
     # 构建 API 请求（Vertex AI API）
-    # Veo 模型的正确端点格式
+    # Veo 模型的端点 - 使用正确的 API 版本和路径
     model_id = "veo-3.1-fast-generate-001"
     
-    # 格式 1: publishers 模式（推荐）
-    url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{model_id}:predictLongRunning"
+    # 使用 v1beta1 API（Veo 可能需要 beta 版本）
+    url = f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{model_id}:predictLongRunning"
     
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
     
+    # Veo API 请求格式
     payload = {
-        "instances": [{"prompt": prompt}],
-        "parameters": {
+        "prompt": prompt,
+        "video": {
             "aspectRatio": aspect_ratio,
-            "numberOfVideos": 1,
             "durationSeconds": duration
         }
     }
