@@ -8,6 +8,7 @@ Google Veo 视频生成 Web 应用后端
 import os
 import json
 import time
+import tempfile
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import requests
@@ -18,37 +19,50 @@ CORS(app)
 # 配置
 PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
 LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "global")
-SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")  # JSON 字符串
-SERVICE_ACCOUNT_FILE = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE")  # 文件路径（可选）
+SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
 API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 
-# 如果配置的是 JSON 字符串，保存到临时文件
+# 服务账号文件路径
 SERVICE_ACCOUNT_FILE_PATH = None
+
+# 如果配置的是 JSON 字符串，保存到临时文件
 if SERVICE_ACCOUNT_JSON and SERVICE_ACCOUNT_JSON.strip().startswith('{'):
-    import tempfile
-    temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
-    temp_file.write(SERVICE_ACCOUNT_JSON)
-    temp_file.close()
-    SERVICE_ACCOUNT_FILE_PATH = temp_file.name
-    print(f"服务账号 JSON 已保存到临时文件：{SERVICE_ACCOUNT_FILE_PATH}")
-elif SERVICE_ACCOUNT_FILE and os.path.exists(SERVICE_ACCOUNT_FILE):
-    SERVICE_ACCOUNT_FILE_PATH = SERVICE_ACCOUNT_FILE
+    try:
+        # 验证 JSON 格式
+        json.loads(SERVICE_ACCOUNT_JSON)
+        temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+        temp_file.write(SERVICE_ACCOUNT_JSON)
+        temp_file.close()
+        SERVICE_ACCOUNT_FILE_PATH = temp_file.name
+        print(f"✅ 服务账号配置成功：{SERVICE_ACCOUNT_FILE_PATH}")
+    except Exception as e:
+        print(f"❌ 服务账号 JSON 格式错误：{e}")
+elif SERVICE_ACCOUNT_JSON and os.path.exists(SERVICE_ACCOUNT_JSON):
+    SERVICE_ACCOUNT_FILE_PATH = SERVICE_ACCOUNT_JSON
 
 # 内存存储操作状态
 operations_cache = {}
 
-def check_api_key_validity(api_key):
-    """检查 API Key 是否有效，并获取所属项目"""
+def get_access_token():
+    """从服务账号获取 access token"""
+    if not SERVICE_ACCOUNT_FILE_PATH:
+        return None
+    
     try:
-        # 调用 API Keys 检查接口
-        url = f"https://apikeys.googleapis.com/v1/keys?key={api_key}"
-        response = requests.get(url)
-        if response.status_code == 200:
-            data = response.json()
-            return True, data
-        return False, None
-    except:
-        return None, None
+        from google.oauth2 import service_account
+        from google.auth.transport.requests import Request
+        
+        credentials = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_FILE_PATH,
+            scopes=['https://www.googleapis.com/auth/cloud-platform']
+        )
+        credentials.refresh(Request())
+        return credentials.token
+    except Exception as e:
+        print(f"❌ 获取 token 失败：{e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 @app.route('/')
 def index():
@@ -58,28 +72,15 @@ def index():
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """健康检查接口"""
-    # 测试 API Key 是否有效
-    api_key_test = None
-    if API_KEY:
-        try:
-            # 尝试调用 API Keys API 检查密钥
-            test_url = f"https://cloudresourcemanager.googleapis.com/v1/projects/{PROJECT_ID}?key={API_KEY}"
-            test_resp = requests.get(test_url, timeout=5)
-            api_key_test = {
-                'valid': test_resp.status_code == 200,
-                'status_code': test_resp.status_code,
-                'response': test_resp.text[:200] if test_resp.text else 'Empty'
-            }
-        except Exception as e:
-            api_key_test = {'error': str(e)}
+    access_token = get_access_token()
     
     return jsonify({
         'status': 'ok',
         'project_id': PROJECT_ID,
         'location': LOCATION,
-        'has_api_key': bool(API_KEY),
-        'has_service_account': bool(SERVICE_ACCOUNT_FILE),
-        'api_key_test': api_key_test
+        'has_service_account': bool(SERVICE_ACCOUNT_FILE_PATH),
+        'service_account_valid': access_token is not None,
+        'token_preview': (access_token[:20] + '...') if access_token else None
     })
 
 @app.route('/api/generate', methods=['POST'])
@@ -93,48 +94,26 @@ def generate_video():
     if not prompt:
         return jsonify({'error': '提示词不能为空'}), 400
     
-    # 优先使用 API Key
-    api_key = API_KEY
-    access_token = None
+    # 获取 access token
+    access_token = get_access_token()
     
-    if not api_key:
-        # 尝试从服务账号获取 token
-        if SERVICE_ACCOUNT_FILE_PATH:
-            try:
-                from google.oauth2 import service_account
-                from google.auth.transport.requests import Request
-                
-                credentials = service_account.Credentials.from_service_account_file(
-                    SERVICE_ACCOUNT_FILE_PATH,
-                    scopes=['https://www.googleapis.com/auth/cloud-platform']
-                )
-                credentials.refresh(Request())
-                access_token = credentials.token
-            except Exception as e:
-                print(f"服务账号认证失败：{e}")
-    
-    if not api_key and not access_token:
+    if not access_token:
         return jsonify({
             'error': '缺少认证信息',
-            'hint': '请在 Render 环境变量中配置 GOOGLE_API_KEY 或 GOOGLE_APPLICATION_CREDENTIALS'
+            'hint': '请检查服务账号配置是否正确',
+            'debug': {
+                'has_json': bool(SERVICE_ACCOUNT_JSON),
+                'has_file_path': bool(SERVICE_ACCOUNT_FILE_PATH)
+            }
         }), 401
     
-    # 构建 API 请求
-    # 使用 API Key 时，通过 Vertex AI 端点（带 key 参数）
-    if api_key:
-        url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-3.1-fast-generate-001:predictLongRunning"
-        # API Key 作为查询参数
-        params = {'key': api_key}
-        headers = {"Content-Type": "application/json"}
-        print(f"使用 API Key 认证，项目：{PROJECT_ID}")
-    else:
-        url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-3.1-fast-generate-001:predictLongRunning"
-        params = {}
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
-        }
-        print(f"使用服务账号认证，项目：{PROJECT_ID}")
+    # 构建 API 请求（Vertex AI API）
+    url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-3.1-fast-generate-001:predictLongRunning"
+    
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
     
     payload = {
         "instances": [{"prompt": prompt}],
@@ -154,10 +133,9 @@ def generate_video():
         print(f"比例：{aspect_ratio}")
         print(f"URL: {url}")
         print(f"Project ID: {PROJECT_ID}")
-        print(f"API Key: {'***' + api_key[-4:] if api_key else 'None'}")
         print(f"{'='*60}")
         
-        response = requests.post(url, headers=headers, params=params, json=payload, timeout=60)
+        response = requests.post(url, headers=headers, json=payload, timeout=120)
         
         print(f"\n响应状态码：{response.status_code}")
         print(f"响应内容：{response.text[:500] if response.text else 'Empty'}")
@@ -192,7 +170,7 @@ def generate_video():
             # 提供有用的错误提示
             hint = ""
             if "PERMISSION_DENIED" in error_status:
-                hint = "权限不足，请确保 API Key 有 Vertex AI 调用权限"
+                hint = "权限不足，请确保服务账号有 Vertex AI User 角色"
             elif "INVALID_ARGUMENT" in error_status:
                 hint = "参数错误，请检查提示词格式"
             elif "NOT_FOUND" in error_status:
@@ -200,7 +178,7 @@ def generate_video():
             elif "RESOURCE_EXHAUSTED" in error_status:
                 hint = "配额已用尽，请检查项目配额"
             elif "UNAUTHENTICATED" in error_status:
-                hint = "认证失败，请检查 API Key 是否正确"
+                hint = "认证失败，请检查服务账号是否有效"
             
             return jsonify({
                 'error': f'API 调用失败：{error_msg}',
@@ -226,38 +204,17 @@ def check_status():
     if not operation_name:
         return jsonify({'error': '缺少操作名'}), 400
     
-    api_key = API_KEY
-    access_token = None
+    access_token = get_access_token()
     
-    if not api_key and SERVICE_ACCOUNT_FILE and os.path.exists(SERVICE_ACCOUNT_FILE):
-        try:
-            from google.oauth2 import service_account
-            from google.auth.transport.requests import Request
-            
-            credentials = service_account.Credentials.from_service_account_file(
-                SERVICE_ACCOUNT_FILE,
-                scopes=['https://www.googleapis.com/auth/cloud-platform']
-            )
-            credentials.refresh(Request())
-            access_token = credentials.token
-        except:
-            pass
-    
-    if not api_key and not access_token:
+    if not access_token:
         return jsonify({'error': '缺少认证信息'}), 401
     
     # 构建查询 URL
-    if api_key:
-        url = f"https://aiplatform.googleapis.com/v1/{operation_name}"
-        params = {'key': api_key}
-        headers = {}
-    else:
-        url = f"https://aiplatform.googleapis.com/v1/{operation_name}"
-        params = {}
-        headers = {"Authorization": f"Bearer {access_token}"}
+    url = f"https://aiplatform.googleapis.com/v1/{operation_name}"
+    headers = {"Authorization": f"Bearer {access_token}"}
     
     try:
-        response = requests.get(url, headers=headers, params=params, timeout=30)
+        response = requests.get(url, headers=headers, timeout=60)
         
         if response.status_code == 200:
             operation = response.json()
@@ -303,13 +260,19 @@ if __name__ == '__main__':
     print(f"📱 访问地址：http://localhost:{port}")
     print(f"📂 项目 ID: {PROJECT_ID or '未设置'}")
     print(f"📍 区域：{LOCATION}")
-    print(f"🔑 API Key: {'已配置' + ' (***' + API_KEY[-4:] + ')' if API_KEY else '未配置'}")
-    print(f"🔐 服务账号：{'已配置' if SERVICE_ACCOUNT_FILE else '未配置'}")
+    print(f"🔐 服务账号：{'✅ 已配置' if SERVICE_ACCOUNT_FILE_PATH else '❌ 未配置'}")
     print("=" * 60)
     
-    if not API_KEY and not SERVICE_ACCOUNT_FILE:
-        print("⚠️  警告：未配置任何认证信息，API 调用将失败！")
-        print("请在环境变量中配置 GOOGLE_API_KEY 或 GOOGLE_APPLICATION_CREDENTIALS")
+    if not SERVICE_ACCOUNT_FILE_PATH:
+        print("⚠️  警告：未配置服务账号，API 调用将失败！")
+        print("请在环境变量中配置 GOOGLE_APPLICATION_CREDENTIALS")
+    else:
+        # 测试 token 获取
+        token = get_access_token()
+        if token:
+            print("✅ 服务账号认证成功！")
+        else:
+            print("❌ 服务账号认证失败，请检查配置")
     print("=" * 60)
     
     app.run(debug=True, port=port, host='0.0.0.0')
