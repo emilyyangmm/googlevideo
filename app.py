@@ -11,8 +11,17 @@ import json
 import tempfile
 import requests
 import traceback
+import logging
 from flask import Flask, render_template, request, jsonify
 from google.oauth2 import service_account
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s: %(message)s',
+    stream=sys.stdout
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -21,56 +30,34 @@ def get_access_token():
     """从服务账号获取 access token"""
     try:
         credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-        msg = f"🔍 检查服务账号文件路径：{credentials_path}"
-        print(msg, flush=True)
-        sys.stdout.flush()
+        logger.info(f"🔍 检查服务账号文件路径：{credentials_path}")
         
         if not credentials_path:
-            msg = "❌ 环境变量 GOOGLE_APPLICATION_CREDENTIALS 未设置"
-            print(msg, flush=True)
-            sys.stdout.flush()
+            logger.error("❌ 环境变量 GOOGLE_APPLICATION_CREDENTIALS 未设置")
             return None
         
         if not os.path.exists(credentials_path):
-            msg = f"❌ 文件不存在：{credentials_path}"
-            print(msg, flush=True)
-            sys.stdout.flush()
-            msg = f"📁 当前目录：{os.getcwd()}"
-            print(msg, flush=True)
-            sys.stdout.flush()
+            logger.error(f"❌ 文件不存在：{credentials_path}")
+            logger.info(f"📁 当前目录：{os.getcwd()}")
             secrets_dir = '/etc/secrets/'
             if os.path.exists(secrets_dir):
-                msg = f"📂 /etc/secrets/ 目录内容：{os.listdir(secrets_dir)}"
-                print(msg, flush=True)
-                sys.stdout.flush()
+                logger.info(f"📂 /etc/secrets/ 目录内容：{os.listdir(secrets_dir)}")
             else:
-                msg = "📂 /etc/secrets/ 目录不存在"
-                print(msg, flush=True)
-                sys.stdout.flush()
+                logger.error("📂 /etc/secrets/ 目录不存在")
             return None
         
-        msg = f"✅ 文件存在，加载服务账号：{credentials_path}"
-        print(msg, flush=True)
-        sys.stdout.flush()
+        logger.info(f"✅ 文件存在，加载服务账号：{credentials_path}")
         credentials = service_account.Credentials.from_service_account_file(
             credentials_path,
             scopes=['https://www.googleapis.com/auth/cloud-platform']
         )
-        msg = "✅ 服务账号加载成功，刷新 token..."
-        print(msg, flush=True)
-        sys.stdout.flush()
+        logger.info("✅ 服务账号加载成功，刷新 token...")
         credentials.refresh(requests.Request())
-        msg = "✅ Token 刷新成功"
-        print(msg, flush=True)
-        sys.stdout.flush()
+        logger.info("✅ Token 刷新成功")
         return credentials.token
     except Exception as e:
-        msg = f"❌ 获取 token 失败：{str(e)}"
-        print(msg, flush=True)
-        sys.stdout.flush()
-        msg = f"📋 详细堆栈：{traceback.format_exc()}"
-        print(msg, flush=True)
-        sys.stdout.flush()
+        logger.error(f"❌ 获取 token 失败：{str(e)}")
+        logger.error(f"📋 详细堆栈：{traceback.format_exc()}")
         return None
 
 # 首页路由
@@ -86,19 +73,16 @@ def generate_video():
         data = request.json
         prompt = data.get('prompt', '')
         
-        msg = f"🎬 收到生成请求，提示词：{prompt}"
-        print(msg, flush=True)
-        sys.stdout.flush()
+        logger.info(f"🎬 收到生成请求，提示词：{prompt}")
         
         if not prompt:
-            msg = "❌ 提示词为空"
-            print(msg, flush=True)
-            sys.stdout.flush()
+            logger.error("❌ 提示词为空")
             return jsonify({'success': False, 'error': '请提供提示词'}), 400
         
         # 获取认证 token
         access_token = get_access_token()
         if not access_token:
+            logger.error("❌ 认证失败，无法获取 access token")
             return jsonify({
                 'success': False, 
                 'error': '认证失败，请检查服务账号配置'
@@ -109,6 +93,7 @@ def generate_video():
         location = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-central1')
         
         if not project_id:
+            logger.error("❌ 缺少 GOOGLE_CLOUD_PROJECT 环境变量")
             return jsonify({
                 'success': False,
                 'error': '缺少 GOOGLE_CLOUD_PROJECT 环境变量'
@@ -147,25 +132,26 @@ def generate_video():
                     }
                 }
                 
-                print(f"📡 调用模型：{model_id}")
+                logger.info(f"📡 调用模型：{model_id}")
                 response = requests.post(url, headers=headers, json=payload, timeout=60)
                 
                 if response.status_code == 200:
                     operation = response.json()
                     operation_name = operation.get("name", "")
-                    print(f"✅ 模型 {model_id} 调用成功，操作名：{operation_name}")
+                    logger.info(f"✅ 模型 {model_id} 调用成功，操作名：{operation_name}")
                     break
                 else:
                     error_data = response.json()
                     error_msg = error_data.get('error', {}).get('message', '未知错误')
-                    print(f"⚠️ 模型 {model_id} 调用失败：{error_msg}")
+                    logger.warning(f"⚠️ 模型 {model_id} 调用失败：{error_msg}")
                     continue
                     
             except Exception as e:
-                print(f"⚠️ 模型 {model_id} 调用异常：{str(e)}")
+                logger.warning(f"⚠️ 模型 {model_id} 调用异常：{str(e)}")
                 continue
         
         if not operation_name:
+            logger.error("❌ 所有模型调用均失败")
             return jsonify({
                 'success': False,
                 'error': '所有模型调用均失败，请检查项目配置和 API 权限'
@@ -180,7 +166,8 @@ def generate_video():
         })
         
     except Exception as e:
-        print(f"❌ 服务器错误：{str(e)}")
+        logger.error(f"❌ 服务器错误：{str(e)}")
+        logger.error(f"📋 详细堆栈：{traceback.format_exc()}")
         return jsonify({
             'success': False,
             'error': f'服务器错误：{str(e)}'
@@ -215,12 +202,14 @@ def check_status():
                     videos = operation["response"].get("generatedVideos", [])
                     if videos:
                         video_uri = videos[0].get("video", {}).get("uri")
+                        logger.info(f"✅ 视频生成完成：{video_uri}")
                         return jsonify({
                             'done': True,
                             'video_uri': video_uri,
                             'success': True
                         })
                 
+                logger.error("❌ 视频生成失败，无返回结果")
                 return jsonify({
                     'done': True,
                     'error': '视频生成失败，无返回结果'
@@ -234,10 +223,11 @@ def check_status():
         else:
             error_data = response.json()
             error_msg = error_data.get('error', {}).get('message', '未知错误')
+            logger.error(f"❌ 查询状态失败：{error_msg}")
             return jsonify({'error': f'查询失败：{error_msg}'}), response.status_code
             
     except Exception as e:
-        print(f"❌ 查询状态失败：{str(e)}")
+        logger.error(f"❌ 查询状态失败：{str(e)}")
         return jsonify({'error': f'查询失败：{str(e)}'}), 500
 
 # 健康检查
@@ -247,4 +237,5 @@ def health():
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))
+    logger.info(f"🚀 启动 Flask 应用，端口：{port}")
     app.run(host='0.0.0.0', port=port, debug=False)
