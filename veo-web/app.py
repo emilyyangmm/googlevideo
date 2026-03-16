@@ -41,7 +41,7 @@ def get_access_token_from_sa():
         print(f"获取 token 失败：{e}")
         return None
 
-def get_access_token_from_env():
+def get_api_key():
     """从环境变量获取 API Key"""
     return os.environ.get("GOOGLE_API_KEY")
 
@@ -63,19 +63,23 @@ def generate_video():
     
     # 获取认证
     access_token = get_access_token_from_sa()
-    if not access_token:
-        access_token = get_access_token_from_env()
+    api_key = get_api_key()
     
-    if not access_token:
+    if not access_token and not api_key:
         return jsonify({'error': '缺少认证信息，请配置服务账号或 API Key'}), 401
     
     # 调用 Vertex AI API
-    url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-3.1-fast-generate-001:predictLongRunning"
-    
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
-    }
+    if api_key:
+        # 使用 API Key 方式
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-fast-generate-001:predictLongRunning?key={api_key}"
+        headers = {"Content-Type": "application/json"}
+    else:
+        # 使用服务账号方式
+        url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-3.1-fast-generate-001:predictLongRunning"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
     
     payload = {
         "instances": [{"prompt": prompt}],
@@ -118,14 +122,18 @@ def check_status():
         return jsonify({'error': '缺少操作名'}), 400
     
     access_token = get_access_token_from_sa()
-    if not access_token:
-        access_token = get_access_token_from_env()
+    api_key = get_api_key()
     
-    if not access_token:
+    if not access_token and not api_key:
         return jsonify({'error': '缺少认证信息'}), 401
     
-    url = f"https://aiplatform.googleapis.com/v1/{operation_name}"
-    headers = {"Authorization": f"Bearer {access_token}"}
+    # 查询操作状态
+    if api_key:
+        url = f"https://generativelanguage.googleapis.com/v1beta/operations/{operation_name}?key={api_key}"
+        headers = {}
+    else:
+        url = f"https://aiplatform.googleapis.com/v1/{operation_name}"
+        headers = {"Authorization": f"Bearer {access_token}"}
     
     try:
         response = requests.get(url, headers=headers)
