@@ -180,19 +180,34 @@ def check_status():
     try:
         operation_name = request.args.get('operation', '')
         
+        logger.info(f"🔍 查询操作状态：{operation_name}")
+        
         if not operation_name:
+            logger.error("❌ 缺少操作名")
             return jsonify({'error': '缺少操作名'}), 400
         
         # 获取认证 token
         access_token = get_access_token()
         if not access_token:
+            logger.error("❌ 认证失败")
             return jsonify({'error': '认证失败'}), 500
         
+        # 清理 operation_name（去掉可能的 projects/ 前缀）
+        if operation_name.startswith('projects/'):
+            clean_operation_name = operation_name
+        else:
+            clean_operation_name = operation_name
+        
         # 查询操作状态
-        url = f"https://aiplatform.googleapis.com/v1/{operation_name}"
+        url = f"https://aiplatform.googleapis.com/v1/{clean_operation_name}"
         headers = {"Authorization": f"Bearer {access_token}"}
         
+        logger.info(f"📡 查询 URL: {url}")
+        
         response = http_requests.get(url, headers=headers, timeout=30)
+        
+        logger.info(f"📊 响应状态码：{response.status_code}")
+        logger.info(f"📄 响应内容：{response.text[:500] if response.text else 'Empty'}")
         
         if response.status_code == 200:
             operation = response.json()
@@ -217,6 +232,7 @@ def check_status():
                 })
             else:
                 # 进行中
+                logger.info("⏳ 视频还在生成中...")
                 return jsonify({
                     'done': False,
                     'metadata': operation.get('metadata', {})
@@ -229,6 +245,7 @@ def check_status():
             
     except Exception as e:
         logger.error(f"❌ 查询状态失败：{str(e)}")
+        logger.error(f"📋 详细堆栈：{traceback.format_exc()}")
         return jsonify({'error': f'查询失败：{str(e)}'}), 500
 
 # 健康检查
