@@ -2,47 +2,34 @@
 # -*- coding: utf-8 -*-
 """
 Google Veo 视频生成 Web 应用后端
-使用 Vertex AI SDK 调用 Veo 模型
+使用 Vertex AI HTTP API 调用 Veo 模型
 """
 
 import os
 import json
 import tempfile
+import requests
 from flask import Flask, render_template, request, jsonify
-import vertexai
-from vertexai import vision_models
 from google.oauth2 import service_account
 
 app = Flask(__name__)
 
-# 初始化 Vertex AI 配置
-def init_vertex_ai():
-    """初始化 Vertex AI 客户端"""
+# 获取 access token
+def get_access_token():
+    """从服务账号获取 access token"""
     try:
-        # 从 Render 的环境变量中获取项目 ID
-        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-        location = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-central1')
-        
-        # 检查是否有服务账号 JSON 文件路径
         credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-        
-        credentials = None
         if credentials_path and os.path.exists(credentials_path):
-            # ✅ 正确：先加载凭证对象
-            credentials = service_account.Credentials.from_service_account_file(credentials_path)
-            print(f"✅ 已加载服务账号文件：{credentials_path}")
-        
-        # 初始化 SDK
-        vertexai.init(
-            project=project_id,
-            location=location,
-            credentials=credentials
-        )
-        return True
-        
+            credentials = service_account.Credentials.from_service_account_file(
+                credentials_path,
+                scopes=['https://www.googleapis.com/auth/cloud-platform']
+            )
+            credentials.refresh(requests.Request())
+            return credentials.token
+        return None
     except Exception as e:
-        print(f"❌ Vertex AI 初始化失败：{str(e)}")
-        return False
+        print(f"❌ 获取 token 失败：{str(e)}")
+        return None
 
 # 首页路由
 @app.route('/')
@@ -62,77 +49,88 @@ def generate_video():
         
         print(f"🎬 开始生成视频，提示词：{prompt}")
         
-        # 初始化 Vertex AI
-        if not init_vertex_ai():
+        # 获取认证 token
+        access_token = get_access_token()
+        if not access_token:
             return jsonify({
                 'success': False, 
-                'error': 'Vertex AI 初始化失败，请检查服务账号配置'
+                'error': '认证失败，请检查服务账号配置'
             }), 500
         
-        # 加载 Veo 模型（根据官方文档：https://cloud.google.com/vertex-ai/generative-ai/docs/models/veo-models）
-        model = None
-        # 按优先级尝试官方支持的模型 ID
-        for model_id in [
-            "veo-3.1-generate-001",      # Veo 3.1 正式版
-            "veo-3.1-fast-generate-001", # Veo 3.1 快速版
-            "veo-3.0-generate-001",      # Veo 3.0 正式版
-            "veo-3.0-fast-generate-001", # Veo 3.0 快速版
-            "veo-2.0-generate-001",      # Veo 2.0
-        ]:
+        # 获取项目配置
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+        location = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-central1')
+        
+        if not project_id:
+            return jsonify({
+                'success': False,
+                'error': '缺少 GOOGLE_CLOUD_PROJECT 环境变量'
+            }), 500
+        
+        # 尝试多个模型 ID
+        model_ids = [
+            "veo-3.1-generate-001",
+            "veo-3.1-fast-generate-001",
+            "veo-3.0-generate-001",
+            "veo-3.0-fast-generate-001",
+            "veo-2.0-generate-001",
+        ]
+        
+        operation_name = None
+        
+        for model_id in model_ids:
             try:
-                model = vision_models.VideoGenerationModel.from_pretrained(model_id)
-                print(f"✅ Veo 模型加载成功：{model_id}")
-                break
+                # 调用 Vertex AI API
+                url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/{model_id}:predictLongRunning"
+                
+                headers = {
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                }
+                
+                payload = {
+                    "instances": [{"prompt": prompt}],
+                    "parameters": {
+                        "aspectRatio": "16:9",
+                        "durationSeconds": 8,
+                        "numberOfVideos": 1,
+                        "personGeneration": "allow_adult",
+                        "generateAudio": False,
+                        "resolution": "720p",
+                    }
+                }
+                
+                print(f"📡 调用模型：{model_id}")
+                response = requests.post(url, headers=headers, json=payload, timeout=60)
+                
+                if response.status_code == 200:
+                    operation = response.json()
+                    operation_name = operation.get("name", "")
+                    print(f"✅ 模型 {model_id} 调用成功，操作名：{operation_name}")
+                    break
+                else:
+                    error_data = response.json()
+                    error_msg = error_data.get('error', {}).get('message', '未知错误')
+                    print(f"⚠️ 模型 {model_id} 调用失败：{error_msg}")
+                    continue
+                    
             except Exception as e:
-                print(f"⚠️ 模型 {model_id} 加载失败：{str(e)}")
+                print(f"⚠️ 模型 {model_id} 调用异常：{str(e)}")
                 continue
         
-        if not model:
+        if not operation_name:
             return jsonify({
                 'success': False,
-                'error': 'Veo 模型加载失败，请确认模型名称是否正确。请查看 Vertex AI 文档获取最新模型 ID。'
+                'error': '所有模型调用均失败，请检查项目配置和 API 权限'
             }), 500
         
-        # 生成视频
-        try:
-            print("⏳ 正在生成视频，这可能需要几分钟...")
-            
-            # 生成视频（根据官方文档设置参数）
-            # 文档：https://cloud.google.com/vertex-ai/generative-ai/docs/models/veo-models
-            generated_video = model.generate_video(
-                prompt=prompt,
-                duration_seconds=8,  # Veo 3: 4/6/8 秒，Veo 2: 5-8 秒
-                aspect_ratio="16:9",
-                person_generation="allow_adult",  # 默认允许生成人物
-                generate_audio=False,  # Veo 3 模型必需参数
-                resolution="720p",  # Veo 3 模型：720p 或 1080p
-                sample_count=1,  # 生成 1 个视频
-            )
-            
-            print(f"✅ 视频生成成功!")
-            
-            # 获取视频 URI
-            video_uri = generated_video.video.uri
-            print(f"📁 视频 URI: {video_uri}")
-            
-            return jsonify({
-                'success': True,
-                'video_url': video_uri,
-                'prompt': prompt
-            })
-            
-        except Exception as e:
-            print(f"❌ 视频生成失败：{str(e)}")
-            error_msg = str(e)
-            if "quota" in error_msg.lower():
-                error_msg = "配额不足，请检查 Vertex AI 配额设置"
-            elif "permission" in error_msg.lower():
-                error_msg = "权限不足，请确保服务账号有 Vertex AI User 角色"
-            
-            return jsonify({
-                'success': False,
-                'error': f'视频生成失败：{error_msg}'
-            }), 500
+        # 缓存操作信息
+        return jsonify({
+            'success': True,
+            'operation_name': operation_name,
+            'message': '任务已提交，正在生成视频...',
+            'prompt': prompt
+        })
         
     except Exception as e:
         print(f"❌ 服务器错误：{str(e)}")
@@ -141,6 +139,60 @@ def generate_video():
             'error': f'服务器错误：{str(e)}'
         }), 500
 
+# 查询操作状态
+@app.route('/status', methods=['GET'])
+def check_status():
+    try:
+        operation_name = request.args.get('operation', '')
+        
+        if not operation_name:
+            return jsonify({'error': '缺少操作名'}), 400
+        
+        # 获取认证 token
+        access_token = get_access_token()
+        if not access_token:
+            return jsonify({'error': '认证失败'}), 500
+        
+        # 查询操作状态
+        url = f"https://aiplatform.googleapis.com/v1/{operation_name}"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        response = requests.get(url, headers=headers, timeout=30)
+        
+        if response.status_code == 200:
+            operation = response.json()
+            
+            if operation.get("done"):
+                # 操作完成
+                if "response" in operation:
+                    videos = operation["response"].get("generatedVideos", [])
+                    if videos:
+                        video_uri = videos[0].get("video", {}).get("uri")
+                        return jsonify({
+                            'done': True,
+                            'video_uri': video_uri,
+                            'success': True
+                        })
+                
+                return jsonify({
+                    'done': True,
+                    'error': '视频生成失败，无返回结果'
+                })
+            else:
+                # 进行中
+                return jsonify({
+                    'done': False,
+                    'metadata': operation.get('metadata', {})
+                })
+        else:
+            error_data = response.json()
+            error_msg = error_data.get('error', {}).get('message', '未知错误')
+            return jsonify({'error': f'查询失败：{error_msg}'}), response.status_code
+            
+    except Exception as e:
+        print(f"❌ 查询状态失败：{str(e)}")
+        return jsonify({'error': f'查询失败：{str(e)}'}), 500
+
 # 健康检查
 @app.route('/health')
 def health():
@@ -148,4 +200,4 @@ def health():
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))
-    app.run(host='0.0.0.0', port=port, debug=False)  # 生产环境关闭 debug
+    app.run(host='0.0.0.0', port=port, debug=False)
