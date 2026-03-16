@@ -15,6 +15,7 @@ import logging
 from flask import Flask, render_template, request, jsonify
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
+from google.cloud import storage
 
 # 配置日志
 logging.basicConfig(
@@ -219,9 +220,35 @@ def check_status():
                     if videos:
                         video_uri = videos[0].get("video", {}).get("uri")
                         logger.info(f"✅ 视频生成完成：{video_uri}")
+                        
+                        # 如果是 gs:// 链接，尝试转换为签名 URL
+                        public_url = video_uri
+                        if video_uri.startswith('gs://'):
+                            try:
+                                # 解析 GCS 路径
+                                bucket_name = video_uri.split('/')[2]
+                                blob_name = '/'.join(video_uri.split('/')[3:])
+                                
+                                # 创建存储客户端
+                                storage_client = storage.Client()
+                                bucket = storage_client.bucket(bucket_name)
+                                blob = bucket.blob(blob_name)
+                                
+                                # 生成签名 URL（有效期 1 小时）
+                                public_url = blob.generate_signed_url(
+                                    version="v4",
+                                    expiration=3600,  # 1 小时
+                                    method="GET"
+                                )
+                                logger.info(f"✅ 生成签名 URL: {public_url}")
+                            except Exception as e:
+                                logger.warning(f"⚠️ 无法生成签名 URL: {str(e)}")
+                                # 继续使用原始 gs:// 链接
+                        
                         return jsonify({
                             'done': True,
-                            'video_uri': video_uri,
+                            'video_uri': public_url,
+                            'original_uri': video_uri,
                             'success': True
                         })
                 

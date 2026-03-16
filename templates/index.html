@@ -211,6 +211,8 @@
  </div>
 
  <script>
+ let pollInterval = null;
+ 
  async function generateVideo() {
  const prompt = document.getElementById('prompt').value.trim();
  
@@ -238,41 +240,17 @@
  
  const data = await response.json();
  
+ if (data.success && data.operation_name) {
+ console.log('✅ 视频生成任务已提交，操作名:', data.operation_name);
+ // 开始轮询状态
+ startPolling(data.operation_name);
+ } else {
  // 隐藏加载
  document.getElementById('loading').classList.remove('show');
- 
- if (data.success) {
- // 显示视频
- document.getElementById('result').classList.add('show');
- 
- // 创建视频元素
- const videoContainer = document.getElementById('videoContainer');
- 
- // 检查视频 URL 格式
- let videoUrl = data.video_url;
- 
- // 如果是 Cloud Storage URI (gs://开头)，可能需要转换为可访问的 URL
- if (videoUrl.startsWith('gs://')) {
- // 这里需要根据你的设置处理
- videoContainer.innerHTML = `
- <p>视频已生成，保存位置：</p>
- <p class="video-info">${videoUrl}</p>
- <p style="margin-top: 10px; color: #666;">如需在线观看，需要配置 Cloud Storage 公共访问权限。</p>
- `;
- } else {
- // 如果是可直接访问的 URL
- videoContainer.innerHTML = `
- <video controls>
- <source src="${videoUrl}" type="video/mp4">
- 您的浏览器不支持视频标签。
- </video>
- <div class="video-info">提示词：${data.prompt}</div>
- `;
- }
- } else {
  // 显示错误
  document.getElementById('error').style.display = 'block';
  document.getElementById('error').textContent = `❌ 生成失败：${data.error || '未知错误'}`;
+ document.getElementById('generateBtn').disabled = false;
  }
  
  } catch (error) {
@@ -282,10 +260,87 @@
  // 显示错误
  document.getElementById('error').style.display = 'block';
  document.getElementById('error').textContent = `❌ 网络错误：${error.message}`;
- } finally {
- // 重新启用按钮
  document.getElementById('generateBtn').disabled = false;
  }
+ }
+ 
+ async function startPolling(operationName) {
+ console.log('🚀 开始轮询视频状态...');
+ 
+ const poll = async () => {
+ try {
+ const response = await fetch(`/status?operation=${encodeURIComponent(operationName)}`);
+ const data = await response.json();
+ 
+ console.log('📊 视频状态:', data);
+ 
+ if (data.done) {
+ // 停止轮询
+ if (pollInterval) {
+ clearInterval(pollInterval);
+ pollInterval = null;
+ }
+ 
+ // 隐藏加载
+ document.getElementById('loading').classList.remove('show');
+ 
+ if (data.video_uri) {
+ console.log('✅ 成功！视频地址:', data.video_uri);
+ 
+ // 显示结果
+ document.getElementById('result').classList.add('show');
+ 
+ const videoContainer = document.getElementById('videoContainer');
+ const videoUri = data.video_uri;
+ 
+ // 处理 gs:// 链接
+ if (videoUri.startsWith('gs://')) {
+ videoContainer.innerHTML = `
+ <p>✅ 视频已生成完成！</p>
+ <p class="video-info"><strong>存储位置：</strong>${videoUri}</p>
+ <p style="margin-top: 10px; color: #666;">
+ 视频保存在 Google Cloud Storage。<br>
+ 如需下载，运行：<code>gcloud storage cp ${videoUri} ./video.mp4</code>
+ </p>
+ <p style="margin-top: 10px; color: #059669;">
+ ✨ 恭喜！视频生成成功！
+ </p>
+ `;
+ } else {
+ videoContainer.innerHTML = `
+ <video controls style="max-width: 100%; border-radius: 10px;">
+ <source src="${videoUri}" type="video/mp4">
+ 您的浏览器不支持视频标签。
+ </video>
+ <div class="video-info" style="margin-top: 10px;">视频已生成完成！</div>
+ `;
+ }
+ 
+ // 重新启用按钮
+ document.getElementById('generateBtn').disabled = false;
+ 
+ } else {
+ console.error('❌ 生成失败:', data.error);
+ document.getElementById('error').style.display = 'block';
+ document.getElementById('error').textContent = `❌ 生成失败：${data.error || '未知错误'}`;
+ document.getElementById('generateBtn').disabled = false;
+ }
+ 
+ } else {
+ // 还在生成中
+ console.log('⏳ 视频还在生成中，10 秒后重试...');
+ }
+ 
+ } catch (err) {
+ console.error('❌ 网络错误:', err);
+ }
+ };
+ 
+ // 立即执行一次
+ poll();
+ 
+ // 每 10 秒轮询一次
+ pollInterval = setInterval(poll, 10000);
  }
  </script>
 </body>
