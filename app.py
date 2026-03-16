@@ -69,9 +69,16 @@ def generate_video():
                 'error': 'Vertex AI 初始化失败，请检查服务账号配置'
             }), 500
         
-        # 加载 Veo 模型（优先使用 veo-3.1）
+        # 加载 Veo 模型（尝试多个可能的名称）
         model = None
-        for model_id in ["veo-3.1-generate-preview", "veo-3.0-generate-preview"]:
+        # 根据错误信息，模型可能使用不同的命名格式
+        for model_id in [
+            "veo-001", 
+            "veo-3.0-generate-preview", 
+            "veo-3.1-generate-preview",
+            "veo-3.0-generate-001",
+            "veo-3.1-generate-001",
+        ]:
             try:
                 model = VideoGenerationModel.from_pretrained(model_id)
                 print(f"✅ Veo 模型加载成功：{model_id}")
@@ -83,7 +90,7 @@ def generate_video():
         if not model:
             return jsonify({
                 'success': False,
-                'error': 'Veo 模型加载失败，请确认模型名称是否正确'
+                'error': 'Veo 模型加载失败，请确认模型名称是否正确。请查看 Vertex AI 文档获取最新模型 ID。'
             }), 500
         
         # 生成视频
