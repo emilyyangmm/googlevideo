@@ -18,28 +18,30 @@ CORS(app)
 # 配置
 PROJECT_ID = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
 LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
 
 # 服务账号文件路径
 SERVICE_ACCOUNT_FILE_PATH = None
 
-# 如果配置的是 JSON 字符串，保存到临时文件
-print(f"DEBUG: SERVICE_ACCOUNT_JSON length = {len(SERVICE_ACCOUNT_JSON) if SERVICE_ACCOUNT_JSON else 0}")
-if SERVICE_ACCOUNT_JSON and len(SERVICE_ACCOUNT_JSON) > 100:
+# 优先使用 API Key，其次使用服务账号
+if API_KEY:
+    print(f"✅ 使用 API Key 认证：***{API_KEY[-4:]}")
+    # API Key 方式：设置环境变量
+    os.environ["GOOGLE_API_KEY"] = API_KEY
+elif SERVICE_ACCOUNT_JSON and len(SERVICE_ACCOUNT_JSON) > 100:
     try:
-        # 验证 JSON 格式
         json_data = json.loads(SERVICE_ACCOUNT_JSON)
         temp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
         temp_file.write(SERVICE_ACCOUNT_JSON)
         temp_file.close()
         SERVICE_ACCOUNT_FILE_PATH = temp_file.name
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = SERVICE_ACCOUNT_FILE_PATH
-        print(f"✅ 服务账号配置成功：{SERVICE_ACCOUNT_FILE_PATH}")
-        print(f"✅ 项目 ID: {json_data.get('project_id', 'unknown')}")
+        print(f"✅ 使用服务账号认证：{json_data.get('project_id', 'unknown')}")
     except Exception as e:
         print(f"❌ 服务账号 JSON 格式错误：{e}")
-        import traceback
-        traceback.print_exc()
+else:
+    print("❌ 未配置任何认证方式")
 
 # 内存存储操作状态
 operations_cache = {}
@@ -70,10 +72,10 @@ def generate_video():
     if not prompt:
         return jsonify({'error': '提示词不能为空'}), 400
     
-    if not SERVICE_ACCOUNT_FILE_PATH:
+    if not API_KEY and not SERVICE_ACCOUNT_FILE_PATH:
         return jsonify({
             'error': '缺少认证信息',
-            'hint': '请检查服务账号配置是否正确'
+            'hint': '请配置 GOOGLE_API_KEY 或 GOOGLE_APPLICATION_CREDENTIALS'
         }), 401
     
     try:
@@ -91,11 +93,13 @@ def generate_video():
         from google import genai
         from google.genai import types
         
-        # 创建客户端
+        # 创建客户端（SDK 会自动使用环境变量中的认证）
         client = genai.Client(
             project=PROJECT_ID,
             location=LOCATION,
         )
+        
+        print(f"✅ SDK 客户端已创建，认证方式：{'API Key' if API_KEY else '服务账号'}")
         
         # 创建视频生成请求
         source = types.GenerateVideosSource(
