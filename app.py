@@ -68,13 +68,14 @@ def generate_video():
     if not access_token and not api_key:
         return jsonify({'error': '缺少认证信息，请配置服务账号或 API Key'}), 401
     
-    # 调用 Vertex AI API
+    # 调用 Vertex AI API（Veo 必须用 Vertex AI）
+    # 使用 API Key 通过 Vertex AI 端点调用
     if api_key:
-        # 使用 API Key 方式
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-fast-generate-001:predictLongRunning?key={api_key}"
+        # API Key 方式 - 使用 Vertex AI 端点
+        url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-3.1-fast-generate-001:predictLongRunning?key={api_key}"
         headers = {"Content-Type": "application/json"}
     else:
-        # 使用服务账号方式
+        # 服务账号方式
         url = f"https://{LOCATION}-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-3.1-fast-generate-001:predictLongRunning"
         headers = {
             "Authorization": f"Bearer {access_token}",
@@ -129,7 +130,7 @@ def check_status():
     
     # 查询操作状态
     if api_key:
-        url = f"https://generativelanguage.googleapis.com/v1beta/operations/{operation_name}?key={api_key}"
+        url = f"https://aiplatform.googleapis.com/v1/{operation_name}?key={api_key}"
         headers = {}
     else:
         url = f"https://aiplatform.googleapis.com/v1/{operation_name}"
