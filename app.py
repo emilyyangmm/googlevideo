@@ -9,11 +9,12 @@ import os
 import sys
 import json
 import tempfile
-import requests
+import requests as http_requests
 import traceback
 import logging
 from flask import Flask, render_template, request, jsonify
 from google.oauth2 import service_account
+from google.auth.transport.requests import Request
 
 # 配置日志
 logging.basicConfig(
@@ -52,7 +53,7 @@ def get_access_token():
             scopes=['https://www.googleapis.com/auth/cloud-platform']
         )
         logger.info("✅ 服务账号加载成功，刷新 token...")
-        credentials.refresh(requests.Request())
+        credentials.refresh(Request())
         logger.info("✅ Token 刷新成功")
         return credentials.token
     except Exception as e:
@@ -133,7 +134,7 @@ def generate_video():
                 }
                 
                 logger.info(f"📡 调用模型：{model_id}")
-                response = requests.post(url, headers=headers, json=payload, timeout=60)
+                response = http_requests.post(url, headers=headers, json=payload, timeout=60)
                 
                 if response.status_code == 200:
                     operation = response.json()
@@ -191,7 +192,7 @@ def check_status():
         url = f"https://aiplatform.googleapis.com/v1/{operation_name}"
         headers = {"Authorization": f"Bearer {access_token}"}
         
-        response = requests.get(url, headers=headers, timeout=30)
+        response = http_requests.get(url, headers=headers, timeout=30)
         
         if response.status_code == 200:
             operation = response.json()
