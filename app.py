@@ -69,15 +69,15 @@ def generate_video():
                 'error': 'Vertex AI 初始化失败，请检查服务账号配置'
             }), 500
         
-        # 加载 Veo 模型（尝试多个可能的名称）
+        # 加载 Veo 模型（根据官方文档：https://cloud.google.com/vertex-ai/generative-ai/docs/models/veo-models）
         model = None
-        # 根据错误信息，模型可能使用不同的命名格式
+        # 按优先级尝试官方支持的模型 ID
         for model_id in [
-            "veo-001", 
-            "veo-3.0-generate-preview", 
-            "veo-3.1-generate-preview",
-            "veo-3.0-generate-001",
-            "veo-3.1-generate-001",
+            "veo-3.1-generate-001",      # Veo 3.1 正式版
+            "veo-3.1-fast-generate-001", # Veo 3.1 快速版
+            "veo-3.0-generate-001",      # Veo 3.0 正式版
+            "veo-3.0-fast-generate-001", # Veo 3.0 快速版
+            "veo-2.0-generate-001",      # Veo 2.0
         ]:
             try:
                 model = VideoGenerationModel.from_pretrained(model_id)
@@ -97,12 +97,16 @@ def generate_video():
         try:
             print("⏳ 正在生成视频，这可能需要几分钟...")
             
-            # 生成视频
+            # 生成视频（根据官方文档设置参数）
+            # 文档：https://cloud.google.com/vertex-ai/generative-ai/docs/models/veo-models
             generated_video = model.generate_video(
                 prompt=prompt,
-                duration_seconds=8,  # 5-8 秒
+                duration_seconds=8,  # Veo 3: 4/6/8 秒，Veo 2: 5-8 秒
                 aspect_ratio="16:9",
-                person_generation="dont_allow",  # 使用默认安全设置
+                person_generation="allow_adult",  # 默认允许生成人物
+                generate_audio=False,  # Veo 3 模型必需参数
+                resolution="720p",  # Veo 3 模型：720p 或 1080p
+                sample_count=1,  # 生成 1 个视频
             )
             
             print(f"✅ 视频生成成功!")
