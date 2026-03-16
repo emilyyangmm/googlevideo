@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Google Veo 视频生成器</title>
+ <style>
+ * {
+ margin: 0;
+ padding: 0;
+ box-sizing: border-box;
+ }
+ 
+ body {
+ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+ min-height: 100vh;
+ display: flex;
+ justify-content: center;
+ align-items: center;
+ padding: 20px;
+ }
+ 
+ .container {
+ background: white;
+ border-radius: 20px;
+ padding: 40px;
+ box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+ max-width: 800px;
+ width: 100%;
+ }
+ 
+ h1 {
+ color: #333;
+ margin-bottom: 10px;
+ text-align: center;
+ }
+ 
+ .subtitle {
+ color: #666;
+ text-align: center;
+ margin-bottom: 30px;
+ font-size: 0.9rem;
+ }
+ 
+ .input-group {
+ margin-bottom: 30px;
+ }
+ 
+ label {
+ display: block;
+ margin-bottom: 8px;
+ color: #555;
+ font-weight: 500;
+ }
+ 
+ textarea {
+ width: 100%;
+ padding: 15px;
+ border: 2px solid #e0e0e0;
+ border-radius: 10px;
+ font-size: 16px;
+ resize: vertical;
+ min-height: 100px;
+ transition: border-color 0.3s;
+ }
+ 
+ textarea:focus {
+ outline: none;
+ border-color: #667eea;
+ }
+ 
+ button {
+ background: #667eea;
+ color: white;
+ border: none;
+ padding: 15px 30px;
+ border-radius: 10px;
+ font-size: 16px;
+ font-weight: 600;
+ cursor: pointer;
+ width: 100%;
+ transition: background 0.3s, transform 0.1s;
+ }
+ 
+ button:hover {
+ background: #5a67d8;
+ }
+ 
+ button:active {
+ transform: scale(0.98);
+ }
+ 
+ button:disabled {
+ background: #a0a0a0;
+ cursor: not-allowed;
+ }
+ 
+ .result {
+ margin-top: 30px;
+ padding: 20px;
+ border-radius: 10px;
+ background: #f8f9fa;
+ display: none;
+ }
+ 
+ .result.show {
+ display: block;
+ }
+ 
+ .error {
+ background: #fee;
+ color: #c33;
+ padding: 15px;
+ border-radius: 8px;
+ margin-bottom: 20px;
+ border: 1px solid #fcc;
+ }
+ 
+ .loading {
+ text-align: center;
+ margin: 20px 0;
+ display: none;
+ }
+ 
+ .loading.show {
+ display: block;
+ }
+ 
+ .spinner {
+ border: 4px solid #f3f3f3;
+ border-top: 4px solid #667eea;
+ border-radius: 50%;
+ width: 40px;
+ height: 40px;
+ animation: spin 1s linear infinite;
+ margin: 0 auto 10px;
+ }
+ 
+ @keyframes spin {
+ 0% { transform: rotate(0deg); }
+ 100% { transform: rotate(360deg); }
+ }
+ 
+ .video-container {
+ margin-top: 20px;
+ text-align: center;
+ }
+ 
+ video {
+ max-width: 100%;
+ border-radius: 10px;
+ box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+ }
+ 
+ .video-info {
+ margin-top: 10px;
+ color: #666;
+ font-size: 0.9rem;
+ word-break: break-all;
+ }
+ 
+ .info-note {
+ background: #e7f5ff;
+ border-left: 4px solid #3182ce;
+ padding: 15px;
+ border-radius: 8px;
+ margin-bottom: 20px;
+ font-size: 0.95rem;
+ }
+ 
+ .info-note p {
+ margin: 5px 0;
+ }
+ 
+ .info-note strong {
+ color: #2c5282;
+ }
+ </style>
+</head>
+<body>
+ <div class="container">
+ <h1>🎬 Google Veo 视频生成器</h1>
+ <p class="subtitle">使用 Google Vertex AI Veo 模型生成 AI 视频</p>
+ 
+ <div class="info-note">
+ <p><strong>💰 计费说明：</strong> 使用 Google Cloud $300 赠金</p>
+ <p><strong>⏱️ 生成时间：</strong> 约 1-5 分钟，请耐心等待</p>
+ <p><strong>📝 提示：</strong> 生成的视频将保存在 Google Cloud Storage</p>
+ </div>
+ 
+ <div class="input-group">
+ <label for="prompt">输入视频描述（支持中文）：</label>
+ <textarea id="prompt" placeholder="例如：一只可爱的熊猫在竹林里吃竹子，4k 画质，自然光线"></textarea>
+ </div>
+ 
+ <button id="generateBtn" onclick="generateVideo()">生成视频</button>
+ 
+ <div id="loading" class="loading">
+ <div class="spinner"></div>
+ <p>正在生成视频，这可能需要几分钟时间...</p>
+ <p style="font-size: 0.9rem; color: #666;">Veo 正在创作中，请稍候</p>
+ </div>
+ 
+ <div id="error" class="error" style="display: none;"></div>
+ 
+ <div id="result" class="result">
+ <h3 style="margin-bottom: 15px;">✨ 生成成功！</h3>
+ <div id="videoContainer" class="video-container"></div>
+ </div>
+ </div>
+
+ <script>
+ async function generateVideo() {
+ const prompt = document.getElementById('prompt').value.trim();
+ 
+ if (!prompt) {
+ alert('请输入视频描述');
+ return;
+ }
+ 
+ // 禁用按钮
+ document.getElementById('generateBtn').disabled = true;
+ 
+ // 显示加载，隐藏之前的结果和错误
+ document.getElementById('loading').classList.add('show');
+ document.getElementById('result').classList.remove('show');
+ document.getElementById('error').style.display = 'none';
+ 
+ try {
+ const response = await fetch('/api/generate', {
+ method: 'POST',
+ headers: {
+ 'Content-Type': 'application/json',
+ },
+ body: JSON.stringify({ prompt: prompt })
+ });
+ 
+ const data = await response.json();
+ 
+ // 隐藏加载
+ document.getElementById('loading').classList.remove('show');
+ 
+ if (data.success) {
+ // 显示视频
+ document.getElementById('result').classList.add('show');
+ 
+ // 创建视频元素
+ const videoContainer = document.getElementById('videoContainer');
+ 
+ // 检查视频 URL 格式
+ let videoUrl = data.video_url;
+ 
+ // 如果是 Cloud Storage URI (gs://开头)，可能需要转换为可访问的 URL
+ if (videoUrl.startsWith('gs://')) {
+ // 这里需要根据你的设置处理
+ videoContainer.innerHTML = `
+ <p>视频已生成，保存位置：</p>
+ <p class="video-info">${videoUrl}</p>
+ <p style="margin-top: 10px; color: #666;">如需在线观看，需要配置 Cloud Storage 公共访问权限。</p>
+ `;
+ } else {
+ // 如果是可直接访问的 URL
+ videoContainer.innerHTML = `
+ <video controls>
+ <source src="${videoUrl}" type="video/mp4">
+ 您的浏览器不支持视频标签。
+ </video>
+ <div class="video-info">提示词：${data.prompt}</div>
+ `;
+ }
+ } else {
+ // 显示错误
+ document.getElementById('error').style.display = 'block';
+ document.getElementById('error').textContent = `❌ 生成失败：${data.error || '未知错误'}`;
+ }
+ 
+ } catch (error) {
+ // 隐藏加载
+ document.getElementById('loading').classList.remove('show');
+ 
+ // 显示错误
+ document.getElementById('error').style.display = 'block';
+ document.getElementById('error').textContent = `❌ 网络错误：${error.message}`;
+ } finally {
+ // 重新启用按钮
+ document.getElementById('generateBtn').disabled = false;
+ }
+ }
+ </script>
+</body>
+</html>
