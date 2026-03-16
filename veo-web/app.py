@@ -167,6 +167,10 @@ def check_status():
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
+    
+    # Render 需要绑定到 0.0.0.0
+    host = os.environ.get("RENDER", "false").lower() == "true" and "0.0.0.0" or "0.0.0.0"
+    
     print("=" * 60)
     print("🎬 Google Veo 视频生成 Web 应用")
     print("=" * 60)
@@ -175,4 +179,4 @@ if __name__ == '__main__':
     print(f"📍 区域：{LOCATION}")
     print(f"🔐 认证：{'服务账号' if SERVICE_ACCOUNT_FILE else 'API Key' if os.environ.get('GOOGLE_API_KEY') else '未配置'}")
     print("=" * 60)
-    app.run(debug=True, port=port, host='0.0.0.0')
+    app.run(debug=True, port=port, host=host)
