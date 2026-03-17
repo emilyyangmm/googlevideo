@@ -76,19 +76,33 @@ def check_status():
     try:
         op_name = request.args.get('operation')
         if not op_name:
-            return jsonify({'error': 'Missing operation'}), 400
+            return jsonify({'error': 'No operation name'}), 400
         
+        # 1. 核心修复：提取真正的 Operation ID
+        # 无论传进来多长的路径，我们只拿最后那个 UUID (如 8e749df4...)
+        op_id = op_name.split('/')[-1]
+        
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+        location = "us-central1"
+
+        # 2. 构造干净的 v1beta1 查询路径（删掉 publishers/google/models/...）
+        url = f"https://{location}-aiplatform.googleapis.com/v1beta1/projects/{project_id}/locations/{location}/operations/{op_id}"
+
         token = get_access_token()
-        
-        # 💡 关键：直接使用完整的 operation name，v1beta1 端点能正确解析
-        url = f"https://us-central1-aiplatform.googleapis.com/v1beta1/{op_name}"
         
         logger.info(f"📡 查询 Veo 状态：{url}")
         
+        # 3. 发起请求
         res = http_requests.get(url, headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         })
+        
+        # 如果 Google 还是报 404，尝试全局端点作为保底
+        if res.status_code == 404:
+            logger.warning(f"⚠️ 区域端点失败，尝试全局端点...")
+            alt_url = f"https://aiplatform.googleapis.com/v1beta1/projects/{project_id}/locations/{location}/operations/{op_id}"
+            res = http_requests.get(alt_url, headers={"Authorization": f"Bearer {token}"})
         
         if res.status_code == 200:
             return jsonify(res.json())
