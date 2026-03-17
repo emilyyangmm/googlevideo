@@ -2,29 +2,46 @@
 # -*- coding: utf-8 -*-
 """
 Google Veo 3.1 视频生成 Web 应用后端
-使用原生 HTTP 请求调用 :videoGenerationPredict 端点
+使用 :predictLongRunning 端点 + 轮询 operation 状态
 """
 import os
+import time
 import logging
 import requests as http_requests
 from flask import Flask, render_template, request, jsonify
 
+logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
 
-# 配置信息
 PROJECT_ID = os.getenv('GOOGLE_CLOUD_PROJECT', 'red-atlas-490409-v1').strip()
 LOCATION = "us-central1"
+GCS_OUTPUT = "gs://red-atlas-video-assets/outputs/"
+
+# Veo 3.1 正确端点
+VEO_URL = (
+    f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1"
+    f"/projects/{PROJECT_ID}/locations/{LOCATION}"
+    f"/publishers/google/models/veo-3.1-generate-001:predictLongRunning"
+)
+
+# 轮询 operation 状态的基础 URL
+OPERATION_BASE_URL = (
+    f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1"
+    f"/projects/{PROJECT_ID}/locations/{LOCATION}/operations"
+)
+
 
 def get_access_token():
     """获取 Google Cloud 访问令牌"""
     try:
         from google.oauth2 import service_account
         from google.auth.transport.requests import Request
-        
+
         creds_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         if not creds_path or not os.path.exists(creds_path):
+            logging.error("未找到凭证文件，请设置 GOOGLE_APPLICATION_CREDENTIALS")
             return None
-        
+
         credentials = service_account.Credentials.from_service_account_file(
             creds_path,
             scopes=['https://www.googleapis.com/auth/cloud-platform']
@@ -35,29 +52,79 @@ def get_access_token():
         logging.error(f"获取 Token 失败: {e}")
         return None
 
+
+def poll_operation(operation_name: str, token: str, max_wait_seconds: int = 300):
+    """
+    轮询 Long-Running Operation 直到完成
+    返回 (success: bool, result_or_error: dict)
+    """
+    op_id = operation_name.split("/operations/")[-1]
+    poll_url = f"{OPERATION_BASE_URL}/{op_id}"
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+
+    interval = 10  # 每 10 秒轮询一次
+    elapsed = 0
+
+    while elapsed < max_wait_seconds:
+        time.sleep(interval)
+        elapsed += interval
+
+        resp = http_requests.get(poll_url, headers=headers, timeout=30)
+        logging.info(f"🔄 轮询 [{elapsed}s] 状态: {resp.status_code}")
+
+        if resp.status_code != 200:
+            return False, {"error": f"轮询失败 HTTP {resp.status_code}: {resp.text}"}
+
+        data = resp.json()
+        done = data.get("done", False)
+
+        if not done:
+            logging.info("⏳ 视频还在生成中...")
+            continue
+
+        # 完成，检查是否有错误
+        if "error" in data:
+            return False, {"error": data["error"].get("message", "未知错误")}
+
+        # 成功，从 response 里取视频 URI
+        response_payload = data.get("response", {})
+        videos = response_payload.get("videos", [])
+        if videos:
+            gcs_uri = videos[0].get("gcsUri", "")
+            return True, {"gcs_uri": gcs_uri, "videos": videos}
+
+        return True, {"raw_response": response_payload}
+
+    return False, {"error": f"超时：{max_wait_seconds} 秒内未完成"}
+
+
 @app.route('/')
 def index():
     return render_template('index.html')
 
+
 @app.route('/generate', methods=['POST'])
 def generate():
+    """提交生成任务，同步等待结果（最多 5 分钟）"""
     try:
-        prompt = request.json.get('prompt')
+        body = request.get_json(silent=True) or {}
+        prompt = body.get('prompt', '').strip()
         if not prompt:
             return jsonify({'success': False, 'error': '请输入提示词'}), 400
-        
+
         token = get_access_token()
         if not token:
-            return jsonify({'success': False, 'error': '认证失败'}), 500
-        
-        # 【终极核武器】直接调用 :videoGenerationPredict 端点（v1beta1 预览版）
-        url = f"https://us-central1-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/us-central1/publishers/google/models/veo-3.1-generate-001:videoGenerationPredict"
-        
+            return jsonify({'success': False, 'error': '认证失败，请检查服务账号凭证'}), 500
+
         headers = {
             "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
-        
+
         payload = {
             "instances": [{"prompt": prompt}],
             "parameters": {
@@ -65,36 +132,84 @@ def generate():
                 "durationSeconds": 5,
                 "outputConfig": {
                     "gcsDestination": {
-                        "outputUriPrefix": "gs://red-atlas-video-assets/outputs/"
+                        "outputUriPrefix": GCS_OUTPUT
                     }
                 }
             }
         }
-        
-        logging.info(f"🚀 发送 HTTP 请求到: {url}")
-        response = http_requests.post(url, headers=headers, json=payload, timeout=60)
-        
-        logging.info(f"📊 响应状态: {response.status_code}")
-        logging.info(f"📄 响应内容: {response.text[:500]}")
-        
-        if response.status_code == 200:
-            data = response.json()
-            operation_name = data.get('name', 'Unknown')
-            logging.info(f"✅ 成功！Operation: {operation_name}")
+
+        logging.info(f"🚀 提交生成请求: {VEO_URL}")
+        resp = http_requests.post(VEO_URL, headers=headers, json=payload, timeout=60)
+        logging.info(f"📊 响应状态: {resp.status_code} | 内容: {resp.text[:300]}")
+
+        if resp.status_code not in (200, 202):
+            return jsonify({
+                'success': False,
+                'error': f'HTTP {resp.status_code}: {resp.text}'
+            }), resp.status_code
+
+        data = resp.json()
+        operation_name = data.get('name', '')
+        logging.info(f"✅ 任务已提交，Operation: {operation_name}")
+
+        # 同步等待结果（最多 5 分钟）
+        success, result = poll_operation(operation_name, token, max_wait_seconds=300)
+
+        if success:
+            gcs_uri = result.get("gcs_uri", "")
             return jsonify({
                 'success': True,
                 'operation_name': operation_name,
-                'message': '熊猫视频开始渲染！'
+                'gcs_uri': gcs_uri,
+                'message': '🎉 视频生成完成！'
             })
         else:
             return jsonify({
                 'success': False,
-                'error': f'HTTP {response.status_code}: {response.text}'
-            }), response.status_code
+                'operation_name': operation_name,
+                'error': result.get('error', '生成失败')
+            }), 500
 
     except Exception as e:
-        logging.error(f"❌ 请求失败: {str(e)}")
+        logging.exception("❌ 请求异常")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/status', methods=['GET'])
+def status():
+    """
+    异步模式：前端主动查询 operation 状态
+    GET /status?operation_name=projects/.../operations/xxx
+    """
+    operation_name = request.args.get('operation_name', '').strip()
+    if not operation_name:
+        return jsonify({'success': False, 'error': '缺少 operation_name 参数'}), 400
+
+    token = get_access_token()
+    if not token:
+        return jsonify({'success': False, 'error': '认证失败'}), 500
+
+    op_id = operation_name.split("/operations/")[-1]
+    poll_url = f"{OPERATION_BASE_URL}/{op_id}"
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = http_requests.get(poll_url, headers=headers, timeout=30)
+    if resp.status_code != 200:
+        return jsonify({'success': False, 'error': f'HTTP {resp.status_code}: {resp.text}'}), resp.status_code
+
+    data = resp.json()
+    done = data.get("done", False)
+
+    if not done:
+        return jsonify({'success': True, 'done': False, 'message': '⏳ 生成中...'})
+
+    if "error" in data:
+        return jsonify({'success': False, 'done': True, 'error': data["error"].get("message")})
+
+    videos = data.get("response", {}).get("videos", [])
+    gcs_uri = videos[0].get("gcsUri", "") if videos else ""
+    return jsonify({'success': True, 'done': True, 'gcs_uri': gcs_uri, 'videos': videos})
+
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))
