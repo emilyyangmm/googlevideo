@@ -17,6 +17,7 @@ from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 from google.cloud import storage
 from google.cloud.aiplatform_v1 import JobServiceClient
+from google.api_core.operations_v1 import OperationsClient
 
 # 配置日志
 logging.basicConfig(
@@ -205,16 +206,16 @@ def check_status():
                     location = parts[3]
                     operation_id = parts[9]
                     
-                    # 创建 JobServiceClient
+                    # 创建 OperationsClient
                     client_options = {"api_endpoint": f"{location}-aiplatform.googleapis.com"}
-                    client = JobServiceClient(client_options=client_options)
+                    operations_client = OperationsClient(client_options=client_options)
                     
                     # 构建 operation 名称用于查询
                     name = f"projects/{project_id}/locations/{location}/operations/{operation_id}"
                     logger.info(f"📡 使用 SDK 查询：{name}")
                     
                     # 使用 SDK 查询操作
-                    response = client.get_operation(name=name)
+                    response = operations_client.get_operation(name=name)
                     
                     # 转换为字典
                     from google.protobuf.json_format import MessageToDict
