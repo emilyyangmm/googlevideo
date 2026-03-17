@@ -196,9 +196,14 @@ def check_status():
         
         # 使用 HTTP API 查询操作状态
         # Veo 3.1+ 的 operation name 格式：projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
-        # 【关键】：直接使用完整的 operation_name，不要简化！
-        # 使用全局端点，让 Google 自动路由
-        url = f"https://aiplatform.googleapis.com/v1/{operation_name}"
+        # 提取 project_id, location, operation_id
+        parts = operation_name.split('/')
+        project_id = parts[1] if len(parts) > 1 else 'red-atlas-490409-v1'
+        location = parts[3] if len(parts) > 3 else 'us-central1'
+        operation_id = parts[9] if len(parts) > 9 else parts[-1]
+        
+        # 使用标准查询端点
+        url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/operations/{operation_id}"
         logger.info(f"📡 查询 URL: {url}")
         
         response = http_requests.get(url, headers={"Authorization": f"Bearer {access_token}"}, timeout=30)
