@@ -34,20 +34,20 @@ def generate():
         if not prompt:
             return jsonify({'success': False, 'error': '请提供提示词'}), 400
         
-        # 再次确保没有空格干扰
         current_loc = LOCATION.strip()
-        logger.info(f"📡 强行调用 Veo 3.1 (Region: {current_loc}): {prompt[:50]}...")
+        logger.info(f"📡 正在尝试 v1beta1 底层 predict：{prompt[:50]}...")
 
-        # 1. 强制指定 v1beta1 API 端点
+        # 1. 设置 API 端点
         client_options = {"api_endpoint": f"{current_loc}-aiplatform.googleapis.com"}
         
         from google.cloud import aiplatform_v1beta1
+        # 2. 初始化底层预测客户端
         client = aiplatform_v1beta1.PredictionServiceClient(client_options=client_options)
         
-        # 2. 使用你在 Model Garden 看到的 3.1 ID
-        resource_id = f"projects/{PROJECT_ID}/locations/{current_loc}/publishers/google/models/veo-3.1-generate-001"
+        # 3. 构造 3.1 资源路径
+        endpoint = f"projects/{PROJECT_ID}/locations/{current_loc}/publishers/google/models/veo-3.1-generate-001"
         
-        # 3. 构造请求体
+        # 4. 构造请求（v1beta1 结构）
         instance = {"prompt": prompt}
         parameters = {
             "aspectRatio": "16:9",
@@ -59,25 +59,28 @@ def generate():
             }
         }
         
-        # 4. 发起异步调用
-        response = client.predict_long_running(
-            endpoint=resource_id,
+        # 5. 【核心修复】底层客户端使用 predict 方法
+        # 对于 Veo 这种长耗时任务，它会返回一个包含 operation 信息的响应
+        response = client.predict(
+            endpoint=endpoint,
             instances=[instance],
             parameters=parameters
         )
         
-        operation_name = response.operation.name
-        logger.info(f"✅ Veo 3.1 任务已强行提交：{operation_name}")
+        # 提取操作 ID (Operation Name)
+        # 底层返回的通常是一个响应对象，我们需要从中获取 metadata 或特定的 operation 字段
+        # 某些版本中返回的是 Operation 对象本身
+        operation_name = response.metadata.get('name') if hasattr(response, 'metadata') else "Task Submitted"
+        
+        logger.info(f"✅ Veo 3.1 任务已提交成功")
         
         return jsonify({
             'success': True,
-            'operation_name': operation_name
+            'response': str(response)  # 先返回完整响应确认
         })
         
     except Exception as e:
-        logger.error(f"❌ 3.1 强行调用失败：{str(e)}")
-        # 打印调试信息，看看到底是哪个端点在报错
-        logger.error(f"DEBUG - Project: {PROJECT_ID}, Loc: {current_loc}")
+        logger.error(f"❌ 3.1 最终尝试失败：{str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/status', methods=['GET'])
