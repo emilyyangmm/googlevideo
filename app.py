@@ -34,20 +34,21 @@ def generate():
         if not prompt:
             return jsonify({'success': False, 'error': '请提供提示词'}), 400
         
-        current_loc = LOCATION.strip()
-        logger.info(f"📡 正在尝试 v1beta1 底层 predict：{prompt[:50]}...")
+        logger.info(f"📡 正在按 Google 强制要求调用 LongRunning API...")
 
-        # 1. 设置 API 端点
-        client_options = {"api_endpoint": f"{current_loc}-aiplatform.googleapis.com"}
+        # 1. 初始化
+        aiplatform.init(project=PROJECT_ID, location=LOCATION)
         
-        from google.cloud import aiplatform_v1beta1
-        # 2. 初始化底层预测客户端
-        client = aiplatform_v1beta1.PredictionServiceClient(client_options=client_options)
+        # 2. 构造模型 ID（严格匹配你截图中的 ID）
+        # 如果 veo-3.1-generate-001 依然报 429，可尝试换成 veo-3.1-generate-preview
+        model_id = "veo-3.1-generate-001"
+        model_path = f"projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{model_id}"
         
-        # 3. 构造 3.1 资源路径
-        endpoint = f"projects/{PROJECT_ID}/locations/{current_loc}/publishers/google/models/veo-3.1-generate-001"
+        # 3. 核心修正：使用专门的 Model 对象调用 predict_long_running
+        # 这是报错中明确要求的 API
+        model = aiplatform.Model(model_name=model_path)
         
-        # 4. 构造请求（v1beta1 结构）
+        # 4. 参数构造
         instance = {"prompt": prompt}
         parameters = {
             "aspectRatio": "16:9",
@@ -59,28 +60,26 @@ def generate():
             }
         }
         
-        # 5. 【核心修复】底层客户端使用 predict 方法
-        # 对于 Veo 这种长耗时任务，它会返回一个包含 operation 信息的响应
-        response = client.predict(
-            endpoint=endpoint,
+        # 调用 LongRunning 专用接口
+        logger.info(f"🚀 发起异步任务...")
+        operation = model.predict_long_running(
             instances=[instance],
             parameters=parameters
         )
         
-        # 提取操作 ID (Operation Name)
-        # 底层返回的通常是一个响应对象，我们需要从中获取 metadata 或特定的 operation 字段
-        # 某些版本中返回的是 Operation 对象本身
-        operation_name = response.metadata.get('name') if hasattr(response, 'metadata') else "Task Submitted"
-        
-        logger.info(f"✅ Veo 3.1 任务已提交成功")
+        # 获取任务 ID
+        operation_name = operation.operation.name
+        logger.info(f"✅ 任务提交成功！Operation: {operation_name}")
         
         return jsonify({
             'success': True,
-            'response': str(response)  # 先返回完整响应确认
+            'operation_name': operation_name,
+            'message': '熊猫视频正在排队生成中'
         })
         
     except Exception as e:
-        logger.error(f"❌ 3.1 最终尝试失败：{str(e)}")
+        logger.error(f"❌ 还是报错：{str(e)}")
+        # 特殊情况处理：如果还是 429，说明 SDK 的 Model 类有 Bug，我们换成底层的 v1beta1.LRO
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/status', methods=['GET'])
