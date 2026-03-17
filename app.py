@@ -17,7 +17,6 @@ from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 from google.cloud import storage
 from google.cloud.aiplatform_v1 import JobServiceClient
-from google.api_core.operations_v1 import OperationsClient
 
 # 配置日志
 logging.basicConfig(
@@ -195,9 +194,10 @@ def check_status():
             logger.error("❌ 服务账号文件不存在")
             return jsonify({'error': '认证失败'}), 500
         
-        # 使用 SDK 查询操作状态
+        # 使用 HTTP API 查询操作状态
         # 对于 Veo 3.1+ 的 predictLongRunning，需要提取项目和位置信息
         # operation_name 格式：projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
+        # 查询端点：https://LOCATION-aiplatform.googleapis.com/v1/projects/PROJECT_ID/locations/LOCATION/operations/OPERATION_ID
         try:
             if '/publishers/google/models/' in operation_name:
                 parts = operation_name.split('/')
@@ -206,30 +206,29 @@ def check_status():
                     location = parts[3]
                     operation_id = parts[9]
                     
-                    # 创建 OperationsClient
-                    client_options = {"api_endpoint": f"{location}-aiplatform.googleapis.com"}
-                    operations_client = OperationsClient(client_options=client_options)
+                    # 使用 location-specific 端点
+                    url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/operations/{operation_id}"
+                    logger.info(f"📡 查询 URL: {url}")
                     
-                    # 构建 operation 名称用于查询
-                    name = f"projects/{project_id}/locations/{location}/operations/{operation_id}"
-                    logger.info(f"📡 使用 SDK 查询：{name}")
+                    response = http_requests.get(url, headers={"Authorization": f"Bearer {access_token}"}, timeout=30)
                     
-                    # 使用 SDK 查询操作
-                    response = operations_client.get_operation(name=name)
-                    
-                    # 转换为字典
-                    from google.protobuf.json_format import MessageToDict
-                    operation = MessageToDict(response._pb) if hasattr(response, '_pb') else {}
+                    if response.status_code == 200:
+                        operation = response.json()
+                    else:
+                        error_data = response.json()
+                        error_msg = error_data.get('error', {}).get('message', '未知错误')
+                        logger.error(f"❌ 查询失败：{error_msg}")
+                        return jsonify({'error': f'查询失败：{error_msg}'}), response.status_code
                 else:
                     logger.error(f"❌ operation name 格式错误：{operation_name}")
                     return jsonify({'error': 'operation name 格式错误'}), 400
             else:
                 logger.error(f"❌ 不支持的 operation name 格式：{operation_name}")
                 return jsonify({'error': '不支持的 operation name 格式'}), 400
-        except Exception as sdk_error:
-            logger.error(f"❌ SDK 查询失败：{str(sdk_error)}")
+        except Exception as api_error:
+            logger.error(f"❌ API 查询失败：{str(api_error)}")
             logger.error(f"📋 详细堆栈：{traceback.format_exc()}")
-            return jsonify({'error': f'查询失败：{str(sdk_error)}'}), 500
+            return jsonify({'error': f'查询失败：{str(api_error)}'}), 500
         
             # 操作完成
             if "response" in operation:
