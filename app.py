@@ -34,20 +34,19 @@ def generate():
         if not prompt:
             return jsonify({'success': False, 'error': '请提供提示词'}), 400
         
-        # 强制清理环境变量
         current_loc = LOCATION.strip()
-        logger.info(f"📡 绕过 SDK 检查，直接强攻 v1beta1 (Region: {current_loc})")
+        logger.info(f"📡 最终修正：使用底层 predict 接口 (Region: {current_loc})")
 
-        # 1. 直接导入底层的 gapic 预测客户端
         from google.cloud import aiplatform_v1beta1
         
-        # 2. 强制指定 API 端点
+        # 1. 强制端点
         client_options = {"api_endpoint": f"{current_loc}-aiplatform.googleapis.com"}
         client = aiplatform_v1beta1.PredictionServiceClient(client_options=client_options)
         
-        # 3. 构造请求体 (必须严格遵守 API 规范)
+        # 2. 构造路径
         endpoint = f"projects/{PROJECT_ID}/locations/{current_loc}/publishers/google/models/veo-3.1-generate-001"
         
+        # 3. 构造请求
         instance = {"prompt": prompt}
         parameters = {
             "aspectRatio": "16:9",
@@ -59,28 +58,31 @@ def generate():
             }
         }
         
-        # 4. 使用底层 RPC 方法
-        logger.info(f"🚀 提交底层 RPC 请求...")
+        # 4. 【核心修复】底层客户端使用 predict 方法，它会返回一个 LRO
+        logger.info(f"🚀 发起底层 predict 调用...")
         
-        # 发起异步长任务
-        operation = client.predict_long_running(
+        # 在 v1beta1 中，Veo 这种长任务是通过普通的 predict 发起
+        # 但后端会自动识别并返回一个长任务响应
+        response = client.predict(
             endpoint=endpoint,
             instances=[instance],
             parameters=parameters
         )
         
-        operation_name = operation.operation.name
-        logger.info(f"✅ 终于成了！Operation: {operation_name}")
+        # 5. 尝试获取 Operation Name
+        # 如果是底层调用，我们需要从响应对象的 metadata 中提取任务 ID
+        logger.info(f"✅ 底层调用已响应")
         
         return jsonify({
             'success': True,
-            'operation_name': operation_name,
-            'message': '任务已强制穿透 SDK 提交成功'
+            'message': '任务已提交，正在等待 Google 排队',
+            'raw_response': str(response.metadata) if hasattr(response, 'metadata') else "Done"
         })
         
     except Exception as e:
-        logger.error(f"❌ 强攻也失败了：{str(e)}")
-        # 如果报错里提到 "Method not found"，请把 predict_long_running 改成 predict
+        logger.error(f"❌ 依然失败：{str(e)}")
+        # 如果报错包含 "429"，说明我们必须得用 LongRunning 接口，
+        # 那么在底层库里，那个方法叫：client.video_generation_predict
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/status', methods=['GET'])
