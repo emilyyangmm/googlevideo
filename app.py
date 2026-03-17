@@ -79,28 +79,28 @@ def check_status():
     if not raw_op_name:
         return jsonify({'error': 'Missing operation name'}), 400
 
-    # 2. 【核心修复】路径清洗
-    # 无论传进来的是什么，我们只提取最后的 UUID（例如 c91195ec...）
-    op_id = raw_op_name.split('/')[-1]
-    
-    # 💡 关键修复：添加默认项目 ID
-    project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'red-atlas-490409-v1')
+    # 💡 关键修复：Veo 3.1 必须使用完整路径查询（带 publishers 段）
+    # 不能提取 operation ID，因为 Google 期望的是完整资源路径
     location = "us-central1"
-
-    # 3. 构造标准的、干净的查询路径 (删掉中间的 publishers/google/models)
-    # 正确格式：projects/{project}/locations/{location}/operations/{id}
-    clean_url = f"https://{location}-aiplatform.googleapis.com/v1beta1/projects/{project_id}/locations/{location}/operations/{op_id}"
-
-    logger.info(f"📡 正在查询状态，清理后的 URL: {clean_url}")
+    url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{raw_op_name}"
+    
+    logger.info(f"📡 查询 Veo 状态（完整路径）: {url}")
     
     token = get_access_token()
     
-    # 4. 发送请求
+    # 2. 发送请求
     try:
-        res = http_requests.get(clean_url, headers={
+        res = http_requests.get(url, headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         })
+        
+        # 如果区域端点失败，尝试全局端点
+        if res.status_code == 404:
+            logger.warning(f"⚠️ 区域端点失败，尝试全局端点...")
+            alt_url = f"https://aiplatform.googleapis.com/v1beta1/{raw_op_name}"
+            res = http_requests.get(alt_url, headers={"Authorization": f"Bearer {token}"})
+        
         return jsonify(res.json()), res.status_code
     except Exception as e:
         return jsonify({'error': str(e)}), 500
