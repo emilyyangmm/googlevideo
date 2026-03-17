@@ -65,13 +65,67 @@ def generate():
         logger.info(f"📡 提交 Veo 3.1 生成请求，输出到：gs://{gcs_bucket}/outputs/")
         
         res = http_requests.post(url, json=payload, headers={"Authorization": f"Bearer {token}"})
+        
+        logger.info(f"📊 生成响应状态码：{res.status_code}")
+        logger.info(f"📄 生成响应内容：{res.text[:500] if res.text else 'Empty'}")
+        
         if res.status_code == 200:
-            return jsonify({'success': True, 'operation_name': res.json().get('name')})
-        logger.error(f"❌ 生成失败：{res.text}")
-        return jsonify({'success': False, 'error': res.text}), res.status_code
+            response_data = res.json()
+            logger.info(f"✅ 生成成功，operation name: {response_data.get('name')}")
+            return jsonify({'success': True, 'operation_name': response_data.get('name')})
+        
+        # 详细错误信息
+        try:
+            error_data = res.json()
+            error_msg = error_data.get('error', {}).get('message', res.text)
+        except:
+            error_msg = res.text
+        
+        logger.error(f"❌ 生成失败 ({res.status_code}): {error_msg}")
+        return jsonify({'success': False, 'error': error_msg, 'status_code': res.status_code}), res.status_code
     except Exception as e:
         logger.error(f"❌ 程序异常：{str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/debug/gcs', methods=['GET'])
+def debug_gcs():
+    """调试端点：检查 GCS 存储桶是否存在及权限"""
+    try:
+        from google.cloud import storage
+        
+        gcs_bucket = "red-atlas-video-assets"
+        logger.info(f"🔍 检查 GCS 存储桶：{gcs_bucket}")
+        
+        # 尝试创建 storage client
+        storage_client = storage.Client()
+        logger.info("✅ Storage Client 创建成功")
+        
+        # 检查存储桶是否存在
+        bucket = storage_client.bucket(gcs_bucket)
+        exists = bucket.exists()
+        logger.info(f"📦 存储桶 {'存在' if exists else '不存在'}")
+        
+        if exists:
+            # 尝试列出文件
+            blobs = list(bucket.list_blobs(max_results=5))
+            logger.info(f"📄 存储桶中有 {len(blobs)} 个文件")
+            
+            return jsonify({
+                'bucket': gcs_bucket,
+                'exists': exists,
+                'file_count': len(blobs),
+                'files': [blob.name for blob in blobs]
+            })
+        else:
+            return jsonify({
+                'bucket': gcs_bucket,
+                'exists': False,
+                'error': '存储桶不存在，请创建它'
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"❌ GCS 调试失败：{str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/status', methods=['GET'])
 def check_status():
