@@ -95,14 +95,17 @@ def check_status():
             "Content-Type": "application/json"
         })
         
-        # 如果区域端点失败，尝试全局端点
-        if res.status_code == 404:
-            logger.warning(f"⚠️ 区域端点失败，尝试全局端点...")
-            alt_url = f"https://aiplatform.googleapis.com/v1beta1/{raw_op_name}"
-            res = http_requests.get(alt_url, headers={"Authorization": f"Bearer {token}"})
+        logger.info(f"📊 响应状态码：{res.status_code}, 内容：{res.text[:200]}")
         
-        return jsonify(res.json()), res.status_code
+        # 尝试解析 JSON
+        try:
+            return jsonify(res.json()), res.status_code
+        except:
+            logger.error(f"❌ JSON 解析失败：{res.text[:200]}")
+            return jsonify({'error': 'Invalid response', 'detail': res.text[:200]}), res.status_code
+        
     except Exception as e:
+        logger.error(f"❌ 请求失败：{str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
