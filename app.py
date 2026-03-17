@@ -34,14 +34,17 @@ def generate():
         
         logger.info(f"📡 提交 Veo 3.1 生成请求：{prompt[:50]}...")
         
-        # 1. 显式初始化，确保 project 和 location 被锁定
+        # 1. 显式初始化
         aiplatform.init(project=PROJECT_ID, location=LOCATION)
         
-        # 2. 修改加载模型的方式：直接传模型名称，而不是长路径
-        # SDK 会根据上面的 init 自动补全路径
-        model = aiplatform.Model("publishers/google/models/veo-3.1-generate-001")
+        # 2. 【核心修复】构造绝对完整的资源 ID
+        # 这个路径是 Google API 的"身份证号"，必须全量匹配
+        resource_id = f"projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-3.1-generate-001"
         
-        # 3. 发起请求
+        # 3. 直接使用 Model 对象加载
+        model = aiplatform.Model(model_name=resource_id)
+        
+        # 4. 发起异步生成
         response = model.predict_long_running(
             instances=[{"prompt": prompt}],
             parameters={
@@ -49,6 +52,7 @@ def generate():
                 "durationSeconds": 5,
                 "outputConfig": {
                     "gcsDestination": {
+                        # 确保路径后面有斜杠
                         "outputUriPrefix": "gs://red-atlas-video-assets/outputs/"
                     }
                 }
@@ -65,8 +69,6 @@ def generate():
         
     except Exception as e:
         logger.error(f"❌ 生成失败：{str(e)}")
-        # 如果还是报区域错误，强行在报错里打印出 PROJECT_ID 和 LOCATION 检查
-        logger.error(f"DEBUG: Current Project={PROJECT_ID}, Location={LOCATION}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/status', methods=['GET'])
