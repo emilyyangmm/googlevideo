@@ -24,11 +24,7 @@ VEO_URL = (
     f"/publishers/google/models/veo-3.1-generate-001:predictLongRunning"
 )
 
-# 轮询 operation 状态的基础 URL
-OPERATION_BASE_URL = (
-    f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1"
-    f"/projects/{PROJECT_ID}/locations/{LOCATION}/operations"
-)
+AIPLATFORM_BASE = f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1"
 
 
 def get_access_token():
@@ -58,8 +54,10 @@ def poll_operation(operation_name: str, token: str, max_wait_seconds: int = 300)
     轮询 Long-Running Operation 直到完成
     返回 (success: bool, result_or_error: dict)
     """
-    op_id = operation_name.split("/operations/")[-1]
-    poll_url = f"{OPERATION_BASE_URL}/{op_id}"
+    # operation_name 已经是完整路径，如:
+    # projects/.../locations/.../publishers/google/models/veo-.../operations/uuid
+    # 直接拼到 base URL 上
+    poll_url = f"{AIPLATFORM_BASE}/{operation_name}"
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -189,8 +187,7 @@ def status():
     if not token:
         return jsonify({'success': False, 'error': '认证失败'}), 500
 
-    op_id = operation_name.split("/operations/")[-1]
-    poll_url = f"{OPERATION_BASE_URL}/{op_id}"
+    poll_url = f"{AIPLATFORM_BASE}/{operation_name}"
     headers = {"Authorization": f"Bearer {token}"}
 
     resp = http_requests.get(poll_url, headers=headers, timeout=30)
