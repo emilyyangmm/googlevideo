@@ -75,25 +75,20 @@ def generate():
 
 @app.route('/status', methods=['GET'])
 def check_status():
-    # 1. 获取前端传来的原始路径
+    # 1. 直接获取前端传来的完整路径，不要做任何 split 或清洗
     raw_op_name = request.args.get('operation', '')
     if not raw_op_name:
         return jsonify({'error': 'No operation'}), 400
 
-    # 2. 【暴力提取】不管路径多乱，只找最后那串 UUID
-    match = re.search(r'operations/([^/?\s]+)', raw_op_name)
-    op_id = match.group(1) if match else raw_op_name.split('/')[-1]
+    # 去掉可能的引号
+    full_path = raw_op_name.strip().replace('"', '').replace("'", "")
     
-    # 彻底去掉可能存在的引号或空格
-    op_id = op_id.strip().replace('"', '').replace("'", "")
+    # 2. 构造正确的 API 完整请求地址
+    # 注意：Veo 3.1 的状态查询必须是：https://{location}-aiplatform.googleapis.com/v1beta1/{full_path}
+    location = "us-central1"
+    clean_url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{full_path}"
 
-    project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'red-atlas-490409-v1')
-    
-    # 3. 【核心修复】构造标准路径（绝对不能包含 publishers 字段！）
-    # 正确格式：https://us-central1-aiplatform.googleapis.com/v1beta1/projects/{P}/locations/us-central1/operations/{ID}
-    clean_url = f"https://us-central1-aiplatform.googleapis.com/v1beta1/projects/{project_id}/locations/us-central1/operations/{op_id}"
-
-    logger.info(f"📡 正在尝试请求修正后的 URL: {clean_url}")
+    logger.info(f"📡 最终验证路径查询：{clean_url}")
 
     token = get_access_token()
     if not token:
@@ -106,29 +101,16 @@ def check_status():
             "Content-Type": "application/json"
         }, timeout=30)
         
-        logger.info(f"📊 响应状态码：{res.status_code}")
-        logger.info(f"📄 响应内容：{res.text[:500] if res.text else 'Empty'}")
+        # 3. 这里的逻辑很关键：如果返回 200，说明查到了
+        if res.status_code == 200:
+            return jsonify(res.json())
         
-        # 处理空响应或非 JSON 响应
-        if not res.text:
-            logger.error("❌ 空响应")
-            return jsonify({'error': 'Empty response from Google API'}), res.status_code
-        
-        # 尝试解析 JSON
-        try:
-            data = res.json()
-        except Exception as json_err:
-            logger.error(f"❌ JSON 解析失败：{str(json_err)}")
-            logger.error(f"📄 原始响应：{res.text[:200]}")
-            return jsonify({'error': 'Invalid JSON response', 'detail': res.text[:200]}), res.status_code
-        
-        # 4. 辅助诊断：如果 Google 报错，打印出来
-        if res.status_code != 200:
-            logger.error(f"❌ Google 响应错误 ({res.status_code}): {res.text}")
-        
-        return jsonify(data), res.status_code
+        # 如果报错，输出详细信息
+        logger.error(f"❌ Google 响应错误 ({res.status_code}): {res.text}")
+        return jsonify(res.json()), res.status_code
+
     except Exception as e:
-        logger.error(f"❌ 状态查询程序崩溃：{str(e)}")
+        logger.error(f"❌ 状态查询崩溃：{str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
