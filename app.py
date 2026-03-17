@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Google Veo 3.1 视频生成 Web 应用后端
-使用 :predictLongRunning 端点 + 轮询 operation 状态
+使用 :predictLongRunning 端点 + :fetchPredictOperation 轮询
 """
 import os
 import time
@@ -24,7 +24,12 @@ VEO_URL = (
     f"/publishers/google/models/veo-3.1-generate-001:predictLongRunning"
 )
 
-AIPLATFORM_BASE = f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1"
+# 轮询状态专用端点（官方文档要求用 fetchPredictOperation，POST 方式）
+FETCH_OP_URL = (
+    f"https://{LOCATION}-aiplatform.googleapis.com/v1beta1"
+    f"/projects/{PROJECT_ID}/locations/{LOCATION}"
+    f"/publishers/google/models/veo-3.1-generate-001:fetchPredictOperation"
+)
 
 
 def get_access_token():
@@ -54,11 +59,6 @@ def poll_operation(operation_name: str, token: str, max_wait_seconds: int = 300)
     轮询 Long-Running Operation 直到完成
     返回 (success: bool, result_or_error: dict)
     """
-    # operation_name 已经是完整路径，如:
-    # projects/.../locations/.../publishers/google/models/veo-.../operations/uuid
-    # 直接拼到 base URL 上
-    poll_url = f"{AIPLATFORM_BASE}/{operation_name}"
-
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -71,7 +71,13 @@ def poll_operation(operation_name: str, token: str, max_wait_seconds: int = 300)
         time.sleep(interval)
         elapsed += interval
 
-        resp = http_requests.get(poll_url, headers=headers, timeout=30)
+        # 用 POST :fetchPredictOperation 查询状态，传完整 operation name
+        resp = http_requests.post(
+            FETCH_OP_URL,
+            headers=headers,
+            json={"operationName": operation_name},
+            timeout=30,
+        )
         logging.info(f"🔄 轮询 [{elapsed}s] 状态: {resp.status_code}")
 
         if resp.status_code != 200:
@@ -187,10 +193,19 @@ def status():
     if not token:
         return jsonify({'success': False, 'error': '认证失败'}), 500
 
-    poll_url = f"{AIPLATFORM_BASE}/{operation_name}"
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
 
-    resp = http_requests.get(poll_url, headers=headers, timeout=30)
+    # 用 POST :fetchPredictOperation 查询状态
+    resp = http_requests.post(
+        FETCH_OP_URL,
+        headers=headers,
+        json={"operationName": operation_name},
+        timeout=30,
+    )
+    
     if resp.status_code != 200:
         return jsonify({'success': False, 'error': f'HTTP {resp.status_code}: {resp.text}'}), resp.status_code
 
