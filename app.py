@@ -133,7 +133,7 @@ def generate():
             "instances": [{"prompt": prompt}],
             "parameters": {
                 "aspectRatio": "16:9",
-                "durationSeconds": 5,
+                "durationSeconds": 8,
                 "outputConfig": {
                     "gcsDestination": {
                         "outputUriPrefix": GCS_OUTPUT
