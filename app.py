@@ -60,27 +60,26 @@ def generate():
 @app.route('/status', methods=['GET'])
 def check_status():
     try:
+        # op_name 本身就是完整的：projects/xxx/locations/xxx/publishers/google/models/veo-3.1-generate-001/operations/xxx
         op_name = request.args.get('operation')
         if not op_name:
             return jsonify({'error': 'Missing operation'}), 400
         
         token = get_access_token()
         
-        # --- 【Veo 3.1 特殊处理】 ---
-        # 从完整路径提取 project_id, location, operation_id
-        # 格式：projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
-        parts = op_name.split('/')
-        project_id = parts[1]
-        location = parts[3]
-        op_id = parts[-1]
+        # --- 【关键修正：不要裁剪路径！】 ---
+        # Veo 3.1 的 LRO 属于 publisher 模型资源，必须保持完整路径
+        # 直接使用 Google 返回的完整 name，只把 v1 换成 v1beta1
         
-        # 构造标准查询路径（不带 publishers）
-        query_path = f"projects/{project_id}/locations/{location}/operations/{op_id}"
+        # 提取 location 用于构建端点
+        location = "us-central1"
+        if "locations/" in op_name:
+            location = op_name.split("locations/")[1].split("/")[0]
         
-        # 使用 v1beta1 API + 区域端点
-        url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{query_path}"
+        # 使用完整路径 + v1beta1
+        url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{op_name}"
         
-        logger.info(f"📡 查询 Veo 状态 (v1beta1): {url}")
+        logger.info(f"📡 全路径 Beta 查询：{url}")
         
         # 发送请求
         res = http_requests.get(url, headers={
@@ -88,11 +87,13 @@ def check_status():
             "Content-Type": "application/json"
         })
         
-        if res.status_code != 200:
-            logger.error(f"❌ 查询失败 {res.status_code}: {res.text[:200]}")
-            return jsonify({'error': f"Google API Error {res.status_code}", 'detail': res.text[:200]}), res.status_code
+        if res.status_code == 200:
+            return jsonify(res.json())
         
-        return jsonify(res.json())
+        # 如果全路径失败，记录错误
+        logger.error(f"❌ 全路径查询失败 {res.status_code}: {res.text[:200]}")
+        return jsonify({'error': f"Google API Error {res.status_code}", 'detail': res.text[:200]}), res.status_code
+        
     except Exception as e:
         logger.error(f"❌ 程序异常：{str(e)}")
         return jsonify({'error': str(e)}), 500
