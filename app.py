@@ -193,26 +193,12 @@ def check_status():
             logger.error("❌ 认证失败")
             return jsonify({'error': '认证失败'}), 500
         
-        # 清理 operation_name
-        # Google Cloud 返回的格式：projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
-        # 但查询时需要简化为：projects/xxx/locations/xxx/operations/xxx
-        
-        clean_operation_name = operation_name
-        
-        # 如果是完整的 publishers 路径，简化它
-        if '/publishers/google/models/' in operation_name:
-            # 提取项目、区域和操作 ID
-            parts = operation_name.split('/')
-            if len(parts) >= 10:
-                # parts: ['projects', 'xxx', 'locations', 'xxx', 'publishers', 'google', 'models', 'xxx', 'operations', 'xxx']
-                project_id = parts[1]
-                location = parts[3]
-                operation_id = parts[9]
-                clean_operation_name = f"projects/{project_id}/locations/{location}/operations/{operation_id}"
-                logger.info(f"🔄 简化 operation 名称：{operation_name} -> {clean_operation_name}")
-        
         # 查询操作状态
-        url = f"https://aiplatform.googleapis.com/v1/{clean_operation_name}"
+        # 对于 Veo 3.1+ 的 predictLongRunning，operation name 格式：
+        # projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
+        # 需要使用完整的 URL 路径查询
+        url = f"https://aiplatform.googleapis.com/v1/{operation_name}"
+        logger.info(f"📡 查询 URL: {url}")
         headers = {"Authorization": f"Bearer {access_token}"}
         
         logger.info(f"📡 查询 URL: {url}")
