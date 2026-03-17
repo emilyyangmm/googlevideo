@@ -2,18 +2,38 @@
 # -*- coding: utf-8 -*-
 """
 Google Veo 3.1 视频生成 Web 应用后端
-使用底层 video_generation_predict 方法
+使用原生 HTTP 请求调用 :videoGenerationPredict 端点
 """
 import os
 import logging
+import requests as http_requests
 from flask import Flask, render_template, request, jsonify
-from google.cloud import aiplatform_v1beta1 
 
 app = Flask(__name__)
 
 # 配置信息
 PROJECT_ID = os.getenv('GOOGLE_CLOUD_PROJECT', 'red-atlas-490409-v1').strip()
 LOCATION = "us-central1"
+
+def get_access_token():
+    """获取 Google Cloud 访问令牌"""
+    try:
+        from google.oauth2 import service_account
+        from google.auth.transport.requests import Request
+        
+        creds_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        if not creds_path or not os.path.exists(creds_path):
+            return None
+        
+        credentials = service_account.Credentials.from_service_account_file(
+            creds_path,
+            scopes=['https://www.googleapis.com/auth/cloud-platform']
+        )
+        credentials.refresh(Request())
+        return credentials.token
+    except Exception as e:
+        logging.error(f"获取 Token 失败: {e}")
+        return None
 
 @app.route('/')
 def index():
@@ -26,46 +46,21 @@ def generate():
         if not prompt:
             return jsonify({'success': False, 'error': '请输入提示词'}), 400
         
-        # 1. 强制使用异步端点
-        client_options = {"api_endpoint": f"us-central1-aiplatform.googleapis.com"}
-        client = aiplatform_v1beta1.PredictionServiceClient(client_options=client_options)
-
-        # 2. 绝对路径
-        endpoint = f"projects/red-atlas-490409-v1/locations/us-central1/publishers/google/models/veo-3.1-generate-001"
-
-        # 3. 构造请求
-        instance = {"prompt": prompt}
-        parameters = {
-            "aspectRatio": "16:9",
-            "durationSeconds": 5,
-            "outputConfig": {
-                "gcsDestination": {
-                    "outputUriPrefix": "gs://red-atlas-video-assets/outputs/"
-                }
-            }
+        token = get_access_token()
+        if not token:
+            return jsonify({'success': False, 'error': '认证失败'}), 500
+        
+        # 【终极核武器】直接调用 :videoGenerationPredict 端点
+        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/us-central1/publishers/google/models/veo-3.1-generate-001:videoGenerationPredict"
+        
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
         }
-
-        # 4. 【核心修正】调用 v1beta1 中真正的异步方法名
-        response = client.video_generation_predict(
-            endpoint=endpoint,
-            instances=[instance],
-            parameters=parameters
-        )
-
-        return jsonify({
-            'success': True, 
-            'operation_name': response.operation.name
-        })
-
-    except AttributeError:
-        # 万一 Google 在这个子版本里又改回去了，做个保底尝试
-        logging.info("尝试保底方法...")
-        try:
-            client_options = {"api_endpoint": f"us-central1-aiplatform.googleapis.com"}
-            client = aiplatform_v1beta1.PredictionServiceClient(client_options=client_options)
-            endpoint = f"projects/red-atlas-490409-v1/locations/us-central1/publishers/google/models/veo-3.1-generate-001"
-            instance = {"prompt": request.json.get('prompt')}
-            parameters = {
+        
+        payload = {
+            "instances": [{"prompt": prompt}],
+            "parameters": {
                 "aspectRatio": "16:9",
                 "durationSeconds": 5,
                 "outputConfig": {
@@ -74,15 +69,31 @@ def generate():
                     }
                 }
             }
-            response = client.predict(
-                endpoint=endpoint,
-                instances=[instance],
-                parameters=parameters
-            )
-            return jsonify({'success': True, 'msg': '已尝试保底调用'})
-        except Exception as e2:
-            return jsonify({'success': False, 'error': str(e2)}), 500
+        }
+        
+        logging.info(f"🚀 发送 HTTP 请求到: {url}")
+        response = http_requests.post(url, headers=headers, json=payload, timeout=60)
+        
+        logging.info(f"📊 响应状态: {response.status_code}")
+        logging.info(f"📄 响应内容: {response.text[:500]}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            operation_name = data.get('name', 'Unknown')
+            logging.info(f"✅ 成功！Operation: {operation_name}")
+            return jsonify({
+                'success': True,
+                'operation_name': operation_name,
+                'message': '熊猫视频开始渲染！'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'HTTP {response.status_code}: {response.text}'
+            }), response.status_code
+
     except Exception as e:
+        logging.error(f"❌ 请求失败: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
