@@ -80,29 +80,38 @@ def check_status():
         return jsonify({'error': 'Missing operation name'}), 400
 
     # 💡 关键修复：Veo 3.1 必须使用完整路径查询（带 publishers 段）
-    # 不能提取 operation ID，因为 Google 期望的是完整资源路径
     location = "us-central1"
     url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{raw_op_name}"
     
     logger.info(f"📡 查询 Veo 状态（完整路径）: {url}")
     
     token = get_access_token()
+    if not token:
+        logger.error("❌ 无法获取认证 token")
+        return jsonify({'error': 'Authentication failed'}), 500
     
     # 2. 发送请求
     try:
         res = http_requests.get(url, headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
-        })
+        }, timeout=30)
         
-        logger.info(f"📊 响应状态码：{res.status_code}, 内容：{res.text[:200]}")
+        logger.info(f"📊 响应状态码：{res.status_code}")
+        logger.info(f"📄 响应内容：{res.text[:500] if res.text else 'Empty'}")
+        
+        # 处理空响应
+        if not res.text:
+            logger.error("❌ 空响应")
+            return jsonify({'error': 'Empty response from Google API'}), res.status_code
         
         # 尝试解析 JSON
         try:
             return jsonify(res.json()), res.status_code
-        except:
-            logger.error(f"❌ JSON 解析失败：{res.text[:200]}")
-            return jsonify({'error': 'Invalid response', 'detail': res.text[:200]}), res.status_code
+        except Exception as json_err:
+            logger.error(f"❌ JSON 解析失败：{str(json_err)}")
+            logger.error(f"📄 原始响应：{res.text[:200]}")
+            return jsonify({'error': 'Invalid JSON response', 'detail': res.text[:200]}), res.status_code
         
     except Exception as e:
         logger.error(f"❌ 请求失败：{str(e)}")
