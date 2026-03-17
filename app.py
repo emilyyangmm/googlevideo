@@ -65,22 +65,20 @@ def check_status():
             return jsonify({'error': 'Missing operation'}), 400
         
         token = get_access_token()
+        # --- 核心修复点：动态解析 Location 并拼接区域域名 ---
+        location = "us-central1"
+        if "locations/" in op_name:
+            location = op_name.split("locations/")[1].split("/")[0]
         
-        # 解析 operation_name 各部分
-        # 格式：projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
-        parts = op_name.split('/')
-        project_id = parts[1] if len(parts) > 1 else 'red-atlas-490409-v1'
-        location = parts[3] if len(parts) > 3 else 'us-central1'
-        op_id = parts[-1] if parts else ''
-        
-        # 使用标准 operations.get 端点
-        url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/operations/{op_id}"
+        # 必须使用 {location}-aiplatform 域名，且直接接上 op_name
+        url = f"https://{location}-aiplatform.googleapis.com/v1/{op_name}"
         
         logger.info(f"📡 正在查询 Veo 状态：{url}")
         res = http_requests.get(url, headers={"Authorization": f"Bearer {token}"})
         
         if res.status_code != 200:
-            logger.error(f"❌ 查询失败 {res.status_code}: {res.text[:200]}")
+            # 如果 404，通常是域名或项目 ID 不匹配
+            logger.error(f"❌ 查询失败 {res.status_code}: {res.text}")
             return jsonify({'error': f"Google API Error {res.status_code}"}), res.status_code
         
         return jsonify(res.json())
