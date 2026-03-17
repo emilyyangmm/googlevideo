@@ -37,7 +37,8 @@ def index():
 def generate():
     try:
         prompt = request.json.get('prompt')
-        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+        # 💡 关键修复：添加默认项目 ID
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'red-atlas-490409-v1')
         location = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-central1')
         token = get_access_token()
 
@@ -82,13 +83,16 @@ def check_status():
     # 无论传进来的是什么，我们只提取最后的 UUID（例如 c91195ec...）
     op_id = raw_op_name.split('/')[-1]
     
-    project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+    # 💡 关键修复：添加默认项目 ID
+    project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'red-atlas-490409-v1')
     location = "us-central1"
 
     # 3. 构造标准的、干净的查询路径 (删掉中间的 publishers/google/models)
     # 正确格式：projects/{project}/locations/{location}/operations/{id}
     clean_url = f"https://{location}-aiplatform.googleapis.com/v1beta1/projects/{project_id}/locations/{location}/operations/{op_id}"
 
+    logger.info(f"📡 正在查询状态，清理后的 URL: {clean_url}")
+    
     token = get_access_token()
     
     # 4. 发送请求
@@ -97,12 +101,7 @@ def check_status():
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         })
-        
-        # 如果还是报错，尝试把 ID 包装成完整路径（这是为了适配某些特定 API 版本）
-        if res.status_code != 200:
-            return jsonify(res.json()), res.status_code
-        
-        return jsonify(res.json())
+        return jsonify(res.json()), res.status_code
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
