@@ -18,9 +18,9 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # 初始化 Vertex AI SDK
-# 注意：us-east1 对 Veo 3.1 支持最稳定
+# 注意：us-central1 对 Veo 2.0 支持最稳定
 PROJECT_ID = os.getenv('GOOGLE_CLOUD_PROJECT', 'red-atlas-490409-v1').strip()
-LOCATION = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-east1').strip()
+LOCATION = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-central1').strip()
 
 logger.info(f"🔧 初始化配置：Project={PROJECT_ID}, Location={LOCATION}")
 
@@ -35,29 +35,30 @@ def generate():
         if not prompt:
             return jsonify({'success': False, 'error': '请提供提示词'}), 400
         
-        logger.info(f"📡 提交 Veo 3.1 生成请求：{prompt[:50]}...")
-        logger.info(f"🔧 初始化 aiplatform: project={PROJECT_ID}, location={LOCATION}")
+        logger.info(f"📡 提交 Veo 2.0 生成请求：{prompt[:50]}...")
         
-        # 1. 显式初始化
+        # 1. 显式初始化，确保 project 和 location 被锁定
+        # 建议使用 us-central1，因为 2.0 在这里的资源最丰富
         aiplatform.init(project=PROJECT_ID, location=LOCATION)
         logger.info(f"✅ aiplatform 初始化成功")
         
-        # 2. 【核心修复】构造绝对完整的资源 ID
-        # 这个路径是 Google API 的"身份证号"，必须全量匹配
-        resource_id = f"projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-3.1-generate-001"
+        # 2. 【核心修改】将模型 ID 改为 2.0 版本
+        # 路径格式：publishers/google/models/veo-2.0-generate-001
+        resource_id = f"projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-2.0-generate-001"
         
         # 3. 直接使用 Model 对象加载
         model = aiplatform.Model(model_name=resource_id)
         
         # 4. 发起异步生成
+        # Veo 2.0 的参数结构与 3.1 基本一致，但兼容性更好
         response = model.predict_long_running(
             instances=[{"prompt": prompt}],
             parameters={
-                "aspectRatio": "16:9",
-                "durationSeconds": 5,
+                "sampleCount": 1,  # 生成 1 个视频
+                "aspectRatio": "16:9",  # 比例
+                "durationSeconds": 5,  # 时长
                 "outputConfig": {
                     "gcsDestination": {
-                        # 确保路径后面有斜杠
                         "outputUriPrefix": "gs://red-atlas-video-assets/outputs/"
                     }
                 }
@@ -65,7 +66,7 @@ def generate():
         )
         
         operation_name = response.operation.name
-        logger.info(f"✅ 生成任务已提交，operation: {operation_name}")
+        logger.info(f"✅ Veo 2.0 任务已提交，operation: {operation_name}")
         
         return jsonify({
             'success': True,
