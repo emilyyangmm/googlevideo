@@ -18,8 +18,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # 初始化 Vertex AI SDK
-PROJECT_ID = os.getenv('GOOGLE_CLOUD_PROJECT', 'red-atlas-490409-v1')
-LOCATION = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-central1')
+PROJECT_ID = os.getenv('GOOGLE_CLOUD_PROJECT', 'red-atlas-490409-v1').strip()
+LOCATION = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-central1').strip()
+
+logger.info(f"🔧 初始化配置：Project={PROJECT_ID}, Location={LOCATION}")
 
 @app.route('/')
 def index():
@@ -33,9 +35,11 @@ def generate():
             return jsonify({'success': False, 'error': '请提供提示词'}), 400
         
         logger.info(f"📡 提交 Veo 3.1 生成请求：{prompt[:50]}...")
+        logger.info(f"🔧 初始化 aiplatform: project={PROJECT_ID}, location={LOCATION}")
         
         # 1. 显式初始化
         aiplatform.init(project=PROJECT_ID, location=LOCATION)
+        logger.info(f"✅ aiplatform 初始化成功")
         
         # 2. 【核心修复】构造绝对完整的资源 ID
         # 这个路径是 Google API 的"身份证号"，必须全量匹配
