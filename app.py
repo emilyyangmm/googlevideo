@@ -77,15 +77,17 @@ def check_status():
         
         logger.info(f"📡 查询操作状态：{operation_name}")
         
-        # 使用 SDK 查询操作状态
+        # 初始化 SDK
         aiplatform.init(project=PROJECT_ID, location=LOCATION)
         
-        # 使用 OperationsClient 查询
+        # --- 核心修复：通过 create_channel 手动创建通信管道 ---
         from google.api_core.operations_v1 import OperationsClient
-        from google.api_core.client_options import ClientOptions
-        
-        client_options = ClientOptions(api_endpoint=f"{LOCATION}-aiplatform.googleapis.com")
-        operations_client = OperationsClient(client_options=client_options)
+        from google.api_core.grpc_helpers import create_channel
+
+        # 不再通过 client_options 传参，而是直接指定地址创建 channel
+        endpoint = f"{LOCATION}-aiplatform.googleapis.com"
+        channel = create_channel(endpoint)
+        operations_client = OperationsClient(channel)
         
         # 查询操作状态
         response = operations_client.get_operation(name=operation_name)
@@ -95,7 +97,6 @@ def check_status():
         result = MessageToDict(response._pb) if hasattr(response, '_pb') else {}
         
         logger.info(f"📊 响应：{result}")
-        
         return jsonify(result)
         
     except Exception as e:
