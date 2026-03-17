@@ -1,2 +1,5 @@
 Flask==2.3.3
 google-cloud-aiplatform==1.43.0
+google-cloud-storage
+protobuf
+requests
