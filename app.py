@@ -66,20 +66,21 @@ def check_status():
         
         token = get_access_token()
         
-        # --- 【最终修正逻辑：针对 Veo 的特殊路径】 ---
-        # 构造纯净的查询路径：projects/{project_id}/locations/{location}/operations/{op_id}
+        # --- 【Veo 3.1 特殊处理】 ---
+        # 从完整路径提取 project_id, location, operation_id
+        # 格式：projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
         parts = op_name.split('/')
         project_id = parts[1]
         location = parts[3]
         op_id = parts[-1]
         
-        # 这种路径是专门为 Long Running Operations 准备的顶级路径
+        # 构造标准查询路径（不带 publishers）
         query_path = f"projects/{project_id}/locations/{location}/operations/{op_id}"
         
-        # 关键：域名必须是区域域名，路径必须是简洁路径（必须使用 v1beta1 支持 UUID）
+        # 使用 v1beta1 API + 区域端点
         url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{query_path}"
         
-        logger.info(f"📡 最终尝试（混合模式 v1beta1）: {url}")
+        logger.info(f"📡 查询 Veo 状态 (v1beta1): {url}")
         
         # 发送请求
         res = http_requests.get(url, headers={
@@ -87,14 +88,9 @@ def check_status():
             "Content-Type": "application/json"
         })
         
-        # 如果还是报 400/404，尝试全局 Endpoint
         if res.status_code != 200:
-            logger.warning(f"⚠️ 区域请求失败 ({res.status_code})，尝试全局 Endpoint...")
-            global_url = f"https://aiplatform.googleapis.com/v1beta1/{query_path}"
-            res = http_requests.get(global_url, headers={"Authorization": f"Bearer {token}"})
-            
-            if res.status_code != 200:
-                return jsonify({'error': f"Google API Error {res.status_code}", 'detail': res.text}), res.status_code
+            logger.error(f"❌ 查询失败 {res.status_code}: {res.text[:200]}")
+            return jsonify({'error': f"Google API Error {res.status_code}", 'detail': res.text[:200]}), res.status_code
         
         return jsonify(res.json())
     except Exception as e:
