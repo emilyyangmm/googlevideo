@@ -50,8 +50,8 @@ def generate():
         if not token:
             return jsonify({'success': False, 'error': '认证失败'}), 500
         
-        # 【终极核武器】直接调用 :videoGenerationPredict 端点
-        url = f"https://us-central1-aiplatform.googleapis.com/v1/projects/{PROJECT_ID}/locations/us-central1/publishers/google/models/veo-3.1-generate-001:videoGenerationPredict"
+        # 【终极核武器】直接调用 :videoGenerationPredict 端点（v1beta1 预览版）
+        url = f"https://us-central1-aiplatform.googleapis.com/v1beta1/projects/{PROJECT_ID}/locations/us-central1/publishers/google/models/veo-3.1-generate-001:videoGenerationPredict"
         
         headers = {
             "Authorization": f"Bearer {token}",
