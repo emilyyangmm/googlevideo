@@ -73,39 +73,37 @@ def generate():
 
 @app.route('/status', methods=['GET'])
 def check_status():
+    # 1. 获取前端传来的原始路径
+    raw_op_name = request.args.get('operation') 
+    if not raw_op_name:
+        return jsonify({'error': 'Missing operation name'}), 400
+
+    # 2. 【核心修复】路径清洗
+    # 无论传进来的是什么，我们只提取最后的 UUID（例如 c91195ec...）
+    op_id = raw_op_name.split('/')[-1]
+    
+    project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+    location = "us-central1"
+
+    # 3. 构造标准的、干净的查询路径 (删掉中间的 publishers/google/models)
+    # 正确格式：projects/{project}/locations/{location}/operations/{id}
+    clean_url = f"https://{location}-aiplatform.googleapis.com/v1beta1/projects/{project_id}/locations/{location}/operations/{op_id}"
+
+    token = get_access_token()
+    
+    # 4. 发送请求
     try:
-        op_name = request.args.get('operation')
-        if not op_name:
-            return jsonify({'error': 'No operation name'}), 400
-        
-        token = get_access_token()
-        
-        # 💡 关键：Veo 3.1 必须使用完整路径查询（带 publishers 段）
-        # 不能提取 operation ID，因为 Google 期望的是完整资源路径
-        location = "us-central1"
-        url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{op_name}"
-        
-        logger.info(f"📡 查询 Veo 状态（完整路径）: {url}")
-        
-        res = http_requests.get(url, headers={
+        res = http_requests.get(clean_url, headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         })
         
-        # 如果区域端点失败，尝试全局端点
-        if res.status_code == 404:
-            logger.warning(f"⚠️ 区域端点失败，尝试全局端点...")
-            alt_url = f"https://aiplatform.googleapis.com/v1beta1/{op_name}"
-            res = http_requests.get(alt_url, headers={"Authorization": f"Bearer {token}"})
+        # 如果还是报错，尝试把 ID 包装成完整路径（这是为了适配某些特定 API 版本）
+        if res.status_code != 200:
+            return jsonify(res.json()), res.status_code
         
-        if res.status_code == 200:
-            return jsonify(res.json())
-        
-        logger.error(f"❌ 查询失败 {res.status_code}: {res.text[:200]}")
-        return jsonify({'error': f"Google API Error {res.status_code}", 'detail': res.text[:200]}), res.status_code
-        
+        return jsonify(res.json())
     except Exception as e:
-        logger.error(f"❌ 程序异常：{str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
