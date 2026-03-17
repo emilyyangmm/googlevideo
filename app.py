@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Google Veo 3.1 视频生成 Web 应用后端
-使用 :predictLongRunning 端点 + :fetchPredictOperation 轮询
+使用 :predictLongRunning 端点 + 轮询 operation 状态
 """
 import os
 import time
@@ -133,7 +133,7 @@ def generate():
             "instances": [{"prompt": prompt}],
             "parameters": {
                 "aspectRatio": "16:9",
-                "durationSeconds": 5,
+                "durationSeconds": 8,
                 "outputConfig": {
                     "gcsDestination": {
                         "outputUriPrefix": GCS_OUTPUT
@@ -198,14 +198,13 @@ def status():
         "Content-Type": "application/json",
     }
 
-    # 用 POST :fetchPredictOperation 查询状态
     resp = http_requests.post(
         FETCH_OP_URL,
         headers=headers,
         json={"operationName": operation_name},
         timeout=30,
     )
-    
+
     if resp.status_code != 200:
         return jsonify({'success': False, 'error': f'HTTP {resp.status_code}: {resp.text}'}), resp.status_code
 
