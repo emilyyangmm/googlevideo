@@ -101,13 +101,29 @@ def check_status():
             "Content-Type": "application/json"
         }, timeout=30)
         
+        logger.info(f"📊 响应状态码：{res.status_code}")
+        logger.info(f"📄 响应内容：{res.text[:500] if res.text else 'Empty'}")
+        
+        # 处理空响应
+        if not res.text:
+            logger.error("❌ 空响应")
+            return jsonify({'error': 'Empty response from Google API'}), res.status_code
+        
+        # 尝试解析 JSON
+        try:
+            data = res.json()
+        except Exception as json_err:
+            logger.error(f"❌ JSON 解析失败：{str(json_err)}")
+            logger.error(f"📄 原始响应：{res.text[:200]}")
+            return jsonify({'error': 'Invalid JSON response', 'detail': res.text[:200]}), res.status_code
+        
         # 3. 这里的逻辑很关键：如果返回 200，说明查到了
         if res.status_code == 200:
-            return jsonify(res.json())
+            return jsonify(data)
         
         # 如果报错，输出详细信息
         logger.error(f"❌ Google 响应错误 ({res.status_code}): {res.text}")
-        return jsonify(res.json()), res.status_code
+        return jsonify(data), res.status_code
 
     except Exception as e:
         logger.error(f"❌ 状态查询崩溃：{str(e)}")
