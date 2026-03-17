@@ -18,8 +18,9 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # 初始化 Vertex AI SDK
+# 注意：us-east1 对 Veo 3.1 支持最稳定
 PROJECT_ID = os.getenv('GOOGLE_CLOUD_PROJECT', 'red-atlas-490409-v1').strip()
-LOCATION = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-central1').strip()
+LOCATION = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-east1').strip()
 
 logger.info(f"🔧 初始化配置：Project={PROJECT_ID}, Location={LOCATION}")
 
