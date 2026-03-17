@@ -196,9 +196,23 @@ def check_status():
         # 查询操作状态
         # 对于 Veo 3.1+ 的 predictLongRunning，operation name 格式：
         # projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
-        # 需要使用完整的 URL 路径查询
-        url = f"https://aiplatform.googleapis.com/v1/{operation_name}"
-        logger.info(f"📡 查询 URL: {url}")
+        # 但查询时需要使用 projects.locations.operations.get 端点：
+        # projects/xxx/locations/xxx/operations/xxx
+        
+        query_operation_name = operation_name
+        
+        # 如果是完整的 publishers 路径，转换为标准操作查询路径
+        if '/publishers/google/models/' in operation_name:
+            parts = operation_name.split('/')
+            if len(parts) >= 10:
+                # parts: ['projects', 'xxx', 'locations', 'xxx', 'publishers', 'google', 'models', 'xxx', 'operations', 'xxx']
+                project_id = parts[1]
+                location = parts[3]
+                operation_id = parts[9]
+                query_operation_name = f"projects/{project_id}/locations/{location}/operations/{operation_id}"
+                logger.info(f"🔄 转换 operation 名称：{operation_name} -> {query_operation_name}")
+        
+        url = f"https://aiplatform.googleapis.com/v1/{query_operation_name}"
         headers = {"Authorization": f"Bearer {access_token}"}
         
         logger.info(f"📡 查询 URL: {url}")
