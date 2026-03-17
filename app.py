@@ -4,6 +4,7 @@ import os
 import sys
 import logging
 import requests as http_requests
+import re
 from flask import Flask, render_template, request, jsonify
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
@@ -75,46 +76,46 @@ def generate():
 @app.route('/status', methods=['GET'])
 def check_status():
     # 1. 获取前端传来的原始路径
-    raw_op_name = request.args.get('operation') 
+    raw_op_name = request.args.get('operation', '')
     if not raw_op_name:
-        return jsonify({'error': 'Missing operation name'}), 400
+        return jsonify({'error': 'No operation'}), 400
 
-    # 💡 关键修复：Veo 3.1 必须使用完整路径查询（带 publishers 段）
-    location = "us-central1"
-    url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{raw_op_name}"
+    # 2. 【暴力提取】不管路径多乱，只找最后那串 UUID
+    match = re.search(r'operations/([^/?\s]+)', raw_op_name)
+    op_id = match.group(1) if match else raw_op_name.split('/')[-1]
     
-    logger.info(f"📡 查询 Veo 状态（完整路径）: {url}")
+    # 彻底去掉可能存在的引号或空格
+    op_id = op_id.strip().replace('"', '').replace("'", "")
+
+    project_id = os.getenv('GOOGLE_CLOUD_PROJECT', 'red-atlas-490409-v1')
     
+    # 3. 【核心修复】构造标准路径（绝对不能包含 publishers 字段！）
+    # 正确格式：https://us-central1-aiplatform.googleapis.com/v1beta1/projects/{P}/locations/us-central1/operations/{ID}
+    clean_url = f"https://us-central1-aiplatform.googleapis.com/v1beta1/projects/{project_id}/locations/us-central1/operations/{op_id}"
+
+    logger.info(f"📡 正在尝试请求修正后的 URL: {clean_url}")
+
     token = get_access_token()
     if not token:
         logger.error("❌ 无法获取认证 token")
         return jsonify({'error': 'Authentication failed'}), 500
     
-    # 2. 发送请求
     try:
-        res = http_requests.get(url, headers={
+        res = http_requests.get(clean_url, headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
         }, timeout=30)
         
-        logger.info(f"📊 响应状态码：{res.status_code}")
-        logger.info(f"📄 响应内容：{res.text[:500] if res.text else 'Empty'}")
+        # 如果返回的是 JSON 且包含 done: true，任务就真的完成了
+        data = res.json()
         
-        # 处理空响应
-        if not res.text:
-            logger.error("❌ 空响应")
-            return jsonify({'error': 'Empty response from Google API'}), res.status_code
+        # 4. 辅助诊断：如果 Google 报错，打印出来
+        if res.status_code != 200:
+            logger.error(f"❌ Google 响应错误 ({res.status_code}): {res.text}")
         
-        # 尝试解析 JSON
-        try:
-            return jsonify(res.json()), res.status_code
-        except Exception as json_err:
-            logger.error(f"❌ JSON 解析失败：{str(json_err)}")
-            logger.error(f"📄 原始响应：{res.text[:200]}")
-            return jsonify({'error': 'Invalid JSON response', 'detail': res.text[:200]}), res.status_code
-        
+        return jsonify(data), res.status_code
     except Exception as e:
-        logger.error(f"❌ 请求失败：{str(e)}")
+        logger.error(f"❌ 状态查询程序崩溃：{str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
