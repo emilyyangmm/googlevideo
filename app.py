@@ -42,10 +42,10 @@ def generate():
         token = get_access_token()
 
         # Veo 3.1 专用预测接口（必须使用 v1beta1）
-        url = f"https://{location}-aiplatform.googleapis.com/v1beta1/projects/{project_id}/locations/{location}/publishers/google/models/veo-3.1-generate-001:predictLongRunning"
+        url = f"https://us-central1-aiplatform.googleapis.com/v1beta1/projects/{project_id}/locations/us-central1/publishers/google/models/veo-3.1-generate-001:predictLongRunning"
         
         # 💡 关键：Veo 3.1 必须指定 GCS 输出目录
-        gcs_bucket = os.getenv('GCS_OUTPUT_BUCKET', f'{project_id}-video-output')
+        gcs_bucket = "red-atlas-video-assets"
         
         payload = {
             "instances": [{"prompt": prompt}],
@@ -64,7 +64,6 @@ def generate():
         
         res = http_requests.post(url, json=payload, headers={"Authorization": f"Bearer {token}"})
         if res.status_code == 200:
-            # 这里返回的 name 是完整的：projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
             return jsonify({'success': True, 'operation_name': res.json().get('name')})
         logger.error(f"❌ 生成失败：{res.text}")
         return jsonify({'success': False, 'error': res.text}), res.status_code
@@ -75,28 +74,17 @@ def generate():
 @app.route('/status', methods=['GET'])
 def check_status():
     try:
-        # op_name 本身就是完整的：projects/xxx/locations/xxx/publishers/google/models/veo-3.1-generate-001/operations/xxx
         op_name = request.args.get('operation')
         if not op_name:
             return jsonify({'error': 'Missing operation'}), 400
         
         token = get_access_token()
         
-        # --- 【关键修正：不要裁剪路径！】 ---
-        # Veo 3.1 的 LRO 属于 publisher 模型资源，必须保持完整路径
-        # 直接使用 Google 返回的完整 name，只把 v1 换成 v1beta1
+        # 💡 关键：直接使用完整的 operation name，v1beta1 端点能正确解析
+        url = f"https://us-central1-aiplatform.googleapis.com/v1beta1/{op_name}"
         
-        # 提取 location 用于构建端点
-        location = "us-central1"
-        if "locations/" in op_name:
-            location = op_name.split("locations/")[1].split("/")[0]
+        logger.info(f"📡 查询 Veo 状态：{url}")
         
-        # 使用完整路径 + v1beta1
-        url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{op_name}"
-        
-        logger.info(f"📡 全路径 Beta 查询：{url}")
-        
-        # 发送请求
         res = http_requests.get(url, headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
@@ -105,8 +93,7 @@ def check_status():
         if res.status_code == 200:
             return jsonify(res.json())
         
-        # 如果全路径失败，记录错误
-        logger.error(f"❌ 全路径查询失败 {res.status_code}: {res.text[:200]}")
+        logger.error(f"❌ 查询失败 {res.status_code}: {res.text[:200]}")
         return jsonify({'error': f"Google API Error {res.status_code}", 'detail': res.text[:200]}), res.status_code
         
     except Exception as e:
