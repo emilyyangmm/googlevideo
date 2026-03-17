@@ -34,21 +34,20 @@ def generate():
         if not prompt:
             return jsonify({'success': False, 'error': '请提供提示词'}), 400
         
-        logger.info(f"📡 正在按 Google 强制要求调用 LongRunning API...")
+        # 强制清理环境变量
+        current_loc = LOCATION.strip()
+        logger.info(f"📡 绕过 SDK 检查，直接强攻 v1beta1 (Region: {current_loc})")
 
-        # 1. 初始化
-        aiplatform.init(project=PROJECT_ID, location=LOCATION)
+        # 1. 直接导入底层的 gapic 预测客户端
+        from google.cloud import aiplatform_v1beta1
         
-        # 2. 构造模型 ID（严格匹配你截图中的 ID）
-        # 如果 veo-3.1-generate-001 依然报 429，可尝试换成 veo-3.1-generate-preview
-        model_id = "veo-3.1-generate-001"
-        model_path = f"projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/{model_id}"
+        # 2. 强制指定 API 端点
+        client_options = {"api_endpoint": f"{current_loc}-aiplatform.googleapis.com"}
+        client = aiplatform_v1beta1.PredictionServiceClient(client_options=client_options)
         
-        # 3. 核心修正：使用专门的 Model 对象调用 predict_long_running
-        # 这是报错中明确要求的 API
-        model = aiplatform.Model(model_name=model_path)
+        # 3. 构造请求体 (必须严格遵守 API 规范)
+        endpoint = f"projects/{PROJECT_ID}/locations/{current_loc}/publishers/google/models/veo-3.1-generate-001"
         
-        # 4. 参数构造
         instance = {"prompt": prompt}
         parameters = {
             "aspectRatio": "16:9",
@@ -60,26 +59,28 @@ def generate():
             }
         }
         
-        # 调用 LongRunning 专用接口
-        logger.info(f"🚀 发起异步任务...")
-        operation = model.predict_long_running(
+        # 4. 使用底层 RPC 方法
+        logger.info(f"🚀 提交底层 RPC 请求...")
+        
+        # 发起异步长任务
+        operation = client.predict_long_running(
+            endpoint=endpoint,
             instances=[instance],
             parameters=parameters
         )
         
-        # 获取任务 ID
         operation_name = operation.operation.name
-        logger.info(f"✅ 任务提交成功！Operation: {operation_name}")
+        logger.info(f"✅ 终于成了！Operation: {operation_name}")
         
         return jsonify({
             'success': True,
             'operation_name': operation_name,
-            'message': '熊猫视频正在排队生成中'
+            'message': '任务已强制穿透 SDK 提交成功'
         })
         
     except Exception as e:
-        logger.error(f"❌ 还是报错：{str(e)}")
-        # 特殊情况处理：如果还是 429，说明 SDK 的 Model 类有 Bug，我们换成底层的 v1beta1.LRO
+        logger.error(f"❌ 强攻也失败了：{str(e)}")
+        # 如果报错里提到 "Method not found"，请把 predict_long_running 改成 predict
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/status', methods=['GET'])
