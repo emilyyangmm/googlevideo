@@ -65,24 +65,37 @@ def check_status():
             return jsonify({'error': 'Missing operation'}), 400
         
         token = get_access_token()
-        # --- 核心修复点：动态解析 Location 并拼接区域域名 ---
-        location = "us-central1"
-        if "locations/" in op_name:
-            location = op_name.split("locations/")[1].split("/")[0]
         
-        # 必须使用 {location}-aiplatform 域名，且直接接上 op_name
-        url = f"https://{location}-aiplatform.googleapis.com/v1/{op_name}"
+        # --- 【关键修复点】路径修剪 ---
+        # 原始 op_name: projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
+        # 必须简化为：projects/xxx/locations/xxx/operations/xxx
         
-        logger.info(f"📡 正在查询 Veo 状态：{url}")
+        query_name = op_name
+        if '/publishers/google/models/' in op_name:
+            parts = op_name.split('/')
+            # 提取 project_id, location 和 operation_id
+            project_id = parts[1]
+            location = parts[3]
+            operation_id = parts[-1]
+            query_name = f"projects/{project_id}/locations/{location}/operations/{operation_id}"
+            logger.info(f"🔄 路径修剪：从模型路径简化为标准任务路径：{query_name}")
+        else:
+            # 如果已经是标准路径，提取 location
+            location = op_name.split('/')[3] if 'locations/' in op_name else "us-central1"
+
+        # 使用区域域名请求修剪后的路径
+        url = f"https://{location}-aiplatform.googleapis.com/v1/{query_name}"
+        
+        logger.info(f"📡 最终请求 URL: {url}")
         res = http_requests.get(url, headers={"Authorization": f"Bearer {token}"})
         
         if res.status_code != 200:
-            # 如果 404，通常是域名或项目 ID 不匹配
             logger.error(f"❌ 查询失败 {res.status_code}: {res.text}")
             return jsonify({'error': f"Google API Error {res.status_code}"}), res.status_code
         
         return jsonify(res.json())
     except Exception as e:
+        logger.error(f"❌ 程序异常：{str(e)}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
