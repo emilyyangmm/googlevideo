@@ -66,25 +66,35 @@ def check_status():
         
         token = get_access_token()
         
-        # --- 【关键修正：停止路径修剪】 ---
-        # 对于 Veo 3.1，必须使用包含 publishers 的原始完整路径
-        # 否则 Google 会因为 ID 是 UUID 字符串而报 400 错误
-        query_path = op_name 
+        # --- 【最终修正逻辑：针对 Veo 的特殊路径】 ---
+        # 构造纯净的查询路径：projects/{project_id}/locations/{location}/operations/{op_id}
+        parts = op_name.split('/')
+        project_id = parts[1]
+        location = parts[3]
+        op_id = parts[-1]
         
-        # 依然动态提取 location，因为域名必须带区域
-        location = "us-central1"
-        if "locations/" in op_name:
-            location = op_name.split("locations/")[1].split("/")[0]
+        # 这种路径是专门为 Long Running Operations 准备的顶级路径
+        query_path = f"projects/{project_id}/locations/{location}/operations/{op_id}"
         
-        # 核心：使用完整路径 + 区域化域名
+        # 关键：域名必须是区域域名，路径必须是简洁路径
         url = f"https://{location}-aiplatform.googleapis.com/v1/{query_path}"
         
-        logger.info(f"📡 最终尝试（完整路径模式）: {url}")
-        res = http_requests.get(url, headers={"Authorization": f"Bearer {token}"})
+        logger.info(f"📡 最终尝试（混合模式）: {url}")
         
+        # 发送请求
+        res = http_requests.get(url, headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        })
+        
+        # 如果还是报 400/404，尝试全局 Endpoint
         if res.status_code != 200:
-            logger.error(f"❌ 查询失败 {res.status_code}: {res.text}")
-            return jsonify({'error': f"Google API Error {res.status_code}"}), res.status_code
+            logger.warning(f"⚠️ 区域请求失败 ({res.status_code})，尝试全局 Endpoint...")
+            global_url = f"https://aiplatform.googleapis.com/v1/{query_path}"
+            res = http_requests.get(global_url, headers={"Authorization": f"Bearer {token}"})
+            
+            if res.status_code != 200:
+                return jsonify({'error': f"Google API Error {res.status_code}", 'detail': res.text}), res.status_code
         
         return jsonify(res.json())
     except Exception as e:
