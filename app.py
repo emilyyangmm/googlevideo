@@ -16,7 +16,7 @@ from flask import Flask, render_template, request, jsonify
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 from google.cloud import storage
-from google.cloud.aiplatform_v1 import JobServiceClient
+
 
 # 配置日志
 logging.basicConfig(
