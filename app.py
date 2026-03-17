@@ -197,14 +197,9 @@ def check_status():
         # 使用 HTTP API 查询操作状态
         # Veo 3.1+ 的 operation name 格式：projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
         # 【关键】：直接使用完整的 operation_name，不要简化！
-        # Veo 3.1 的 operations 是挂在模型路径下的子资源，需要保留完整路径
-        location = "us-central1"  # 默认值
-        if "locations/" in operation_name:
-            location = operation_name.split("locations/")[1].split("/")[0]
-        
-        # 直接使用完整路径，不简化
-        url = f"https://{location}-aiplatform.googleapis.com/v1/{operation_name}"
-        logger.info(f"📡 查询 Vertex AI 专用 URL: {url}")
+        # 使用全局端点，让 Google 自动路由
+        url = f"https://aiplatform.googleapis.com/v1/{operation_name}"
+        logger.info(f"📡 查询 URL: {url}")
         
         response = http_requests.get(url, headers={"Authorization": f"Bearer {access_token}"}, timeout=30)
         
