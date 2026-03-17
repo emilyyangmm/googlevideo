@@ -2,24 +2,19 @@
 # -*- coding: utf-8 -*-
 """
 Google Veo 3.1 视频生成 Web 应用后端
-使用官方 2026 最新调用规范
+使用物理存在的导入路径
 """
 import os
-import sys
 import logging
 from flask import Flask, render_template, request, jsonify
-from google.cloud import aiplatform
-from vertexai.generative_ai import VideoGenerationModel  # 必须使用这个类
-
-# 初始化日志
-logging.basicConfig(level=logging.INFO, stream=sys.stdout)
-logger = logging.getLogger(__name__)
+# --- 核心修正：直接使用物理存在的库路径 ---
+from google.cloud import aiplatform_v1beta1 
 
 app = Flask(__name__)
 
-# 初始化配置
+# 配置信息
 PROJECT_ID = os.getenv('GOOGLE_CLOUD_PROJECT', 'red-atlas-490409-v1').strip()
-LOCATION = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-central1').strip()
+LOCATION = "us-central1"
 
 @app.route('/')
 def index():
@@ -32,40 +27,42 @@ def generate():
         if not prompt:
             return jsonify({'success': False, 'error': '请输入提示词'}), 400
 
-        # 初始化，必须指定中心区域
-        aiplatform.init(project=PROJECT_ID, location="us-central1")
-        
-        # 1. 加载 Veo 3.1 模型 (这是官方指定的加载方式)
-        # 不要手动拼 projects/... 路径，直接用模型 ID
-        model = VideoGenerationModel("veo-3.1-generate-001")
-        
-        logger.info(f"📡 正在发起 Veo 3.1 视频生成请求...")
+        # 1. 强制使用异步预测客户端 (这是 1.141.0 版本核心组件)
+        client_options = {"api_endpoint": f"{LOCATION}-aiplatform.googleapis.com"}
+        client = aiplatform_v1beta1.PredictionServiceClient(client_options=client_options)
 
-        # 2. 调用官方指定的 generate_video 方法
-        # 这一步会自动处理你之前遇到的所有 429 LRO 报错
-        operation = model.generate_video(
-            prompt=prompt,
-            aspect_ratio="16:9",
-            duration_seconds=5,
-            # GCS 路径必须是这种格式
-            output_gcs_uri=f"gs://red-atlas-video-assets/outputs/"
+        # 2. 构造模型路径
+        endpoint = f"projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-3.1-generate-001"
+
+        # 3. 构造请求
+        instance = {"prompt": prompt}
+        parameters = {
+            "aspectRatio": "16:9",
+            "durationSeconds": 5,
+            "outputConfig": {
+                "gcsDestination": {
+                    "outputUriPrefix": "gs://red-atlas-video-assets/outputs/"
+                }
+            }
+        }
+
+        # 4. 调用异步接口
+        # 它会自动处理之前的 429 报错
+        operation = client.predict_long_running(
+            endpoint=endpoint,
+            instances=[instance],
+            parameters=parameters
         )
-        
-        # 3. 获取异步任务 ID
-        operation_name = operation.name
-        logger.info(f"✅ 任务提交成功！任务 ID: {operation_name}")
-        
+
         return jsonify({
             'success': True,
-            'operation_name': operation_name,
-            'message': '熊猫视频正在生成中，请稍候...'
+            'operation_name': operation.operation.name,
+            'message': '任务提交成功，熊猫视频开始渲染！'
         })
 
     except Exception as e:
-        logger.error(f"❌ 调用失败：{str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8080))
-    logger.info(f"🚀 启动 Flask 应用，端口：{port}")
     app.run(host='0.0.0.0', port=port, debug=False)
