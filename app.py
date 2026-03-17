@@ -16,6 +16,7 @@ from flask import Flask, render_template, request, jsonify
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 from google.cloud import storage
+from google.cloud.aiplatform_v1 import JobServiceClient
 
 # 配置日志
 logging.basicConfig(
@@ -187,109 +188,98 @@ def check_status():
             logger.error("❌ 缺少操作名")
             return jsonify({'error': '缺少操作名'}), 400
         
-        # 获取认证 token
-        access_token = get_access_token()
-        if not access_token:
-            logger.error("❌ 认证失败")
+        # 获取认证
+        credentials_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        if not credentials_path or not os.path.exists(credentials_path):
+            logger.error("❌ 服务账号文件不存在")
             return jsonify({'error': '认证失败'}), 500
         
-        # 查询操作状态
-        # 对于 Veo 3.1+ 的 predictLongRunning，operation name 格式：
-        # projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
-        # 但查询时需要使用 projects.locations.operations.get 端点：
-        # projects/xxx/locations/xxx/operations/xxx
-        
-        query_operation_name = operation_name
-        
-        # 如果是完整的 publishers 路径，转换为标准操作查询路径
-        if '/publishers/google/models/' in operation_name:
-            parts = operation_name.split('/')
-            if len(parts) >= 10:
-                # parts: ['projects', 'xxx', 'locations', 'xxx', 'publishers', 'google', 'models', 'xxx', 'operations', 'xxx']
-                project_id = parts[1]
-                location = parts[3]
-                operation_id = parts[9]
-                query_operation_name = f"projects/{project_id}/locations/{location}/operations/{operation_id}"
-                logger.info(f"🔄 转换 operation 名称：{operation_name} -> {query_operation_name}")
-        
-        url = f"https://aiplatform.googleapis.com/v1/{query_operation_name}"
-        headers = {"Authorization": f"Bearer {access_token}"}
-        
-        logger.info(f"📡 查询 URL: {url}")
-        
-        response = http_requests.get(url, headers=headers, timeout=30)
-        
-        logger.info(f"📊 响应状态码：{response.status_code}")
-        logger.info(f"📄 响应内容：{response.text[:500] if response.text else 'Empty'}")
-        
-        # 处理非 JSON 响应
-        if response.status_code != 200:
-            if 'text/html' in response.headers.get('Content-Type', ''):
-                logger.error(f"❌ 返回了 HTML 页面而不是 JSON，可能是 URL 格式错误")
-                return jsonify({
-                    'error': f'查询失败：API 返回 404，请检查 operation 名称格式',
-                    'operation_name': operation_name
-                }), 404
-        
-        if response.status_code == 200:
-            operation = response.json()
-            
-            if operation.get("done"):
-                # 操作完成
-                if "response" in operation:
-                    videos = operation["response"].get("generatedVideos", [])
-                    if videos:
-                        video_uri = videos[0].get("video", {}).get("uri")
-                        logger.info(f"✅ 视频生成完成：{video_uri}")
-                        
-                        # 如果是 gs:// 链接，尝试转换为签名 URL
-                        public_url = video_uri
-                        if video_uri.startswith('gs://'):
-                            try:
-                                # 解析 GCS 路径
-                                bucket_name = video_uri.split('/')[2]
-                                blob_name = '/'.join(video_uri.split('/')[3:])
-                                
-                                # 创建存储客户端
-                                storage_client = storage.Client()
-                                bucket = storage_client.bucket(bucket_name)
-                                blob = bucket.blob(blob_name)
-                                
-                                # 生成签名 URL（有效期 1 小时）
-                                public_url = blob.generate_signed_url(
-                                    version="v4",
-                                    expiration=3600,  # 1 小时
-                                    method="GET"
-                                )
-                                logger.info(f"✅ 生成签名 URL: {public_url}")
-                            except Exception as e:
-                                logger.warning(f"⚠️ 无法生成签名 URL: {str(e)}")
-                                # 继续使用原始 gs:// 链接
-                        
-                        return jsonify({
-                            'done': True,
-                            'video_uri': public_url,
-                            'original_uri': video_uri,
-                            'success': True
-                        })
-                
-                logger.error("❌ 视频生成失败，无返回结果")
-                return jsonify({
-                    'done': True,
-                    'error': '视频生成失败，无返回结果'
-                })
+        # 使用 SDK 查询操作状态
+        # 对于 Veo 3.1+ 的 predictLongRunning，需要提取项目和位置信息
+        # operation_name 格式：projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
+        try:
+            if '/publishers/google/models/' in operation_name:
+                parts = operation_name.split('/')
+                if len(parts) >= 10:
+                    project_id = parts[1]
+                    location = parts[3]
+                    operation_id = parts[9]
+                    
+                    # 创建 JobServiceClient
+                    client_options = {"api_endpoint": f"{location}-aiplatform.googleapis.com"}
+                    client = JobServiceClient(client_options=client_options)
+                    
+                    # 构建 operation 名称用于查询
+                    name = f"projects/{project_id}/locations/{location}/operations/{operation_id}"
+                    logger.info(f"📡 使用 SDK 查询：{name}")
+                    
+                    # 使用 SDK 查询操作
+                    response = client.get_operation(name=name)
+                    
+                    # 转换为字典
+                    from google.protobuf.json_format import MessageToDict
+                    operation = MessageToDict(response._pb) if hasattr(response, '_pb') else {}
+                else:
+                    logger.error(f"❌ operation name 格式错误：{operation_name}")
+                    return jsonify({'error': 'operation name 格式错误'}), 400
             else:
-                # 进行中
-                logger.info("⏳ 视频还在生成中...")
-                return jsonify({
-                    'done': False,
-                    'metadata': operation.get('metadata', {})
-                })
+                logger.error(f"❌ 不支持的 operation name 格式：{operation_name}")
+                return jsonify({'error': '不支持的 operation name 格式'}), 400
+        except Exception as sdk_error:
+            logger.error(f"❌ SDK 查询失败：{str(sdk_error)}")
+            logger.error(f"📋 详细堆栈：{traceback.format_exc()}")
+            return jsonify({'error': f'查询失败：{str(sdk_error)}'}), 500
+        
+            # 操作完成
+            if "response" in operation:
+                videos = operation["response"].get("generatedVideos", [])
+                if videos:
+                    video_uri = videos[0].get("video", {}).get("uri")
+                    logger.info(f"✅ 视频生成完成：{video_uri}")
+                    
+                    # 如果是 gs:// 链接，尝试转换为签名 URL
+                    public_url = video_uri
+                    if video_uri.startswith('gs://'):
+                        try:
+                            # 解析 GCS 路径
+                            bucket_name = video_uri.split('/')[2]
+                            blob_name = '/'.join(video_uri.split('/')[3:])
+                            
+                            # 创建存储客户端
+                            storage_client = storage.Client()
+                            bucket = storage_client.bucket(bucket_name)
+                            blob = bucket.blob(blob_name)
+                            
+                            # 生成签名 URL（有效期 1 小时）
+                            public_url = blob.generate_signed_url(
+                                version="v4",
+                                expiration=3600,  # 1 小时
+                                method="GET"
+                            )
+                            logger.info(f"✅ 生成签名 URL: {public_url}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ 无法生成签名 URL: {str(e)}")
+                            # 继续使用原始 gs:// 链接
+                    
+                    return jsonify({
+                        'done': True,
+                        'video_uri': public_url,
+                        'original_uri': video_uri,
+                        'success': True
+                    })
+            
+            logger.error("❌ 视频生成失败，无返回结果")
+            return jsonify({
+                'done': True,
+                'error': '视频生成失败，无返回结果'
+            })
         else:
-            error_data = response.json()
-            error_msg = error_data.get('error', {}).get('message', '未知错误')
-            logger.error(f"❌ 查询状态失败：{error_msg}")
-            return jsonify({'error': f'查询失败：{error_msg}'}), response.status_code
+            # 进行中
+            logger.info("⏳ 视频还在生成中...")
+            return jsonify({
+                'done': False,
+                'metadata': operation.get('metadata', {})
+            })
             
     except Exception as e:
         logger.error(f"❌ 查询状态失败：{str(e)}")
