@@ -41,20 +41,35 @@ def generate():
         location = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-central1')
         token = get_access_token()
 
-        # Veo 3.1 专用预测接口（必须使用 v1beta1 支持 UUID 格式 operation ID）
+        # Veo 3.1 专用预测接口（必须使用 v1beta1）
         url = f"https://{location}-aiplatform.googleapis.com/v1beta1/projects/{project_id}/locations/{location}/publishers/google/models/veo-3.1-generate-001:predictLongRunning"
+        
+        # 💡 关键：Veo 3.1 必须指定 GCS 输出目录
+        gcs_bucket = os.getenv('GCS_OUTPUT_BUCKET', f'{project_id}-video-output')
         
         payload = {
             "instances": [{"prompt": prompt}],
-            "parameters": {"aspectRatio": "16:9", "durationSeconds": 5}
+            "parameters": {
+                "aspectRatio": "16:9", 
+                "durationSeconds": 5,
+                "outputConfig": {
+                    "gcsDestination": {
+                        "outputUriPrefix": f"gs://{gcs_bucket}/outputs/"
+                    }
+                }
+            }
         }
+        
+        logger.info(f"📡 提交 Veo 3.1 生成请求，输出到：gs://{gcs_bucket}/outputs/")
         
         res = http_requests.post(url, json=payload, headers={"Authorization": f"Bearer {token}"})
         if res.status_code == 200:
             # 这里返回的 name 是完整的：projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
             return jsonify({'success': True, 'operation_name': res.json().get('name')})
+        logger.error(f"❌ 生成失败：{res.text}")
         return jsonify({'success': False, 'error': res.text}), res.status_code
     except Exception as e:
+        logger.error(f"❌ 程序异常：{str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/status', methods=['GET'])
