@@ -35,18 +35,18 @@ def generate():
             return jsonify({'success': False, 'error': '请提供提示词'}), 400
         
         current_loc = LOCATION.strip()
-        logger.info(f"📡 最终修正：使用底层 predict 接口 (Region: {current_loc})")
+        logger.info(f"📡 最终穿透：使用专属 Video Generation 接口 (Region: {current_loc})")
 
         from google.cloud import aiplatform_v1beta1
         
-        # 1. 强制端点
+        # 1. 强制指定端点
         client_options = {"api_endpoint": f"{current_loc}-aiplatform.googleapis.com"}
         client = aiplatform_v1beta1.PredictionServiceClient(client_options=client_options)
         
-        # 2. 构造路径
+        # 2. 构造资源路径
         endpoint = f"projects/{PROJECT_ID}/locations/{current_loc}/publishers/google/models/veo-3.1-generate-001"
         
-        # 3. 构造请求
+        # 3. 构造请求参数
         instance = {"prompt": prompt}
         parameters = {
             "aspectRatio": "16:9",
@@ -58,31 +58,27 @@ def generate():
             }
         }
         
-        # 4. 【核心修复】底层客户端使用 predict 方法，它会返回一个 LRO
-        logger.info(f"🚀 发起底层 predict 调用...")
-        
-        # 在 v1beta1 中，Veo 这种长任务是通过普通的 predict 发起
-        # 但后端会自动识别并返回一个长任务响应
-        response = client.predict(
+        # 4. 【终极修正】调用 Google 报错里要求的"专属异步接口"
+        # 在底层 SDK 中，针对 Veo 的 LRO 接口是 video_generation_predict
+        logger.info(f"🚀 发起异步长任务请求...")
+        operation = client.video_generation_predict(
             endpoint=endpoint,
             instances=[instance],
             parameters=parameters
         )
         
-        # 5. 尝试获取 Operation Name
-        # 如果是底层调用，我们需要从响应对象的 metadata 中提取任务 ID
-        logger.info(f"✅ 底层调用已响应")
+        # 获取任务 ID
+        operation_name = operation.operation.name
+        logger.info(f"✅ 终于！任务提交成功：{operation_name}")
         
         return jsonify({
             'success': True,
-            'message': '任务已提交，正在等待 Google 排队',
-            'raw_response': str(response.metadata) if hasattr(response, 'metadata') else "Done"
+            'operation_name': operation_name,
+            'message': '熊猫视频正在 Google 后端渲染中！'
         })
         
     except Exception as e:
-        logger.error(f"❌ 依然失败：{str(e)}")
-        # 如果报错包含 "429"，说明我们必须得用 LongRunning 接口，
-        # 那么在底层库里，那个方法叫：client.video_generation_predict
+        logger.error(f"❌ 调试报错详情：{str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/status', methods=['GET'])
