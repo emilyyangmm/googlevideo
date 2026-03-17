@@ -66,27 +66,20 @@ def check_status():
         
         token = get_access_token()
         
-        # --- 【关键修复点】路径修剪 ---
-        # 原始 op_name: projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
-        # 必须简化为：projects/xxx/locations/xxx/operations/xxx
+        # --- 【关键修正：停止路径修剪】 ---
+        # 对于 Veo 3.1，必须使用包含 publishers 的原始完整路径
+        # 否则 Google 会因为 ID 是 UUID 字符串而报 400 错误
+        query_path = op_name 
         
-        query_name = op_name
-        if '/publishers/google/models/' in op_name:
-            parts = op_name.split('/')
-            # 提取 project_id, location 和 operation_id
-            project_id = parts[1]
-            location = parts[3]
-            operation_id = parts[-1]
-            query_name = f"projects/{project_id}/locations/{location}/operations/{operation_id}"
-            logger.info(f"🔄 路径修剪：从模型路径简化为标准任务路径：{query_name}")
-        else:
-            # 如果已经是标准路径，提取 location
-            location = op_name.split('/')[3] if 'locations/' in op_name else "us-central1"
-
-        # 使用区域域名请求修剪后的路径
-        url = f"https://{location}-aiplatform.googleapis.com/v1/{query_name}"
+        # 依然动态提取 location，因为域名必须带区域
+        location = "us-central1"
+        if "locations/" in op_name:
+            location = op_name.split("locations/")[1].split("/")[0]
         
-        logger.info(f"📡 最终请求 URL: {url}")
+        # 核心：使用完整路径 + 区域化域名
+        url = f"https://{location}-aiplatform.googleapis.com/v1/{query_path}"
+        
+        logger.info(f"📡 最终尝试（完整路径模式）: {url}")
         res = http_requests.get(url, headers={"Authorization": f"Bearer {token}"})
         
         if res.status_code != 200:
