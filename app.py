@@ -194,43 +194,39 @@ def check_status():
             logger.error("❌ 认证失败")
             return jsonify({'error': '认证失败'}), 500
         
-        # 使用 HTTP API 查询操作状态
-        # Veo 3.1+ 的 operation name 格式：projects/xxx/locations/xxx/publishers/google/models/xxx/operations/xxx
-        # 提取 project_id, location, operation_id
-        parts = operation_name.split('/')
-        project_id = parts[1] if len(parts) > 1 else 'red-atlas-490409-v1'
-        location = parts[3] if len(parts) > 3 else 'us-central1'
-        operation_id = parts[9] if len(parts) > 9 else parts[-1]
+        # --- 修复核心：动态提取 Location 并使用区域域名 ---
+        # 直接透传完整的 operation_name，不要简化！
+        location = "us-central1"
+        if "locations/" in operation_name:
+            location = operation_name.split("locations/")[1].split("/")[0]
         
-        # 使用标准查询端点
-        url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/operations/{operation_id}"
-        logger.info(f"📡 查询 URL: {url}")
+        # 必须使用区域前缀域名，且透传完整的 operation_name
+        url = f"https://{location}-aiplatform.googleapis.com/v1/{operation_name}"
+        logger.info(f"📡 正在查询：{url}")
         
         response = http_requests.get(url, headers={"Authorization": f"Bearer {access_token}"}, timeout=30)
         
-        logger.info(f"📊 响应状态码：{response.status_code}")
-        logger.info(f"📄 响应内容：{response.text[:500] if response.text else 'Empty'}")
-        
         if response.status_code != 200:
-            try:
-                error_data = response.json()
-                error_msg = error_data.get('error', {}).get('message', '未知错误')
-            except:
-                error_msg = response.text[:200]
-            logger.error(f"❌ 查询失败：{error_msg}")
-            return jsonify({'error': f'查询失败：{error_msg}'}), response.status_code
+            return jsonify({'error': f"Google 返回 {response.status_code}: {response.text[:200]}"}), response.status_code
         
         operation = response.json()
         logger.info(f"📊 响应：{operation}")
         
-        # 检查操作是否完成
-        if not operation.get("done"):
-            # 进行中
-            logger.info("⏳ 视频还在生成中...")
-            return jsonify({
-                'done': False,
-                'metadata': operation.get('metadata', {})
-            })
+        # 如果生成完成，提取视频地址
+        if operation.get("done") and "response" in operation:
+            videos = operation["response"].get("generatedVideos", [])
+            if videos:
+                video_uri = videos[0].get("video", {}).get("uri")
+                logger.info(f"✅ 视频生成完成：{video_uri}")
+                return jsonify({'done': True, 'video_uri': video_uri, 'success': True})
+        
+        # 进行中
+        return jsonify({'done': False, 'metadata': operation.get('metadata', {}), 'success': True})
+        
+    except Exception as e:
+        logger.error(f"❌ 查询状态失败：{str(e)}")
+        logger.error(f"📋 详细堆栈：{traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
         
         # 操作完成
         if "response" not in operation:
