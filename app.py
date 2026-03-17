@@ -34,15 +34,15 @@ def generate():
         
         logger.info(f"📡 提交 Veo 3.1 生成请求：{prompt[:50]}...")
         
-        # 使用 Vertex AI SDK 调用 Veo 3.1
-        # 初始化 SDK
+        # 1. 显式初始化，确保 project 和 location 被锁定
         aiplatform.init(project=PROJECT_ID, location=LOCATION)
         
-        # 调用 Veo 3.1 模型
-        model_endpoint = f"projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-3.1-generate-001"
+        # 2. 修改加载模型的方式：直接传模型名称，而不是长路径
+        # SDK 会根据上面的 init 自动补全路径
+        model = aiplatform.Model("publishers/google/models/veo-3.1-generate-001")
         
-        # 使用 predictLongRunning 方法
-        response = aiplatform.Model(model_endpoint).predict_long_running(
+        # 3. 发起请求
+        response = model.predict_long_running(
             instances=[{"prompt": prompt}],
             parameters={
                 "aspectRatio": "16:9",
@@ -55,7 +55,6 @@ def generate():
             }
         )
         
-        # 获取 operation name
         operation_name = response.operation.name
         logger.info(f"✅ 生成任务已提交，operation: {operation_name}")
         
@@ -66,6 +65,8 @@ def generate():
         
     except Exception as e:
         logger.error(f"❌ 生成失败：{str(e)}")
+        # 如果还是报区域错误，强行在报错里打印出 PROJECT_ID 和 LOCATION 检查
+        logger.error(f"DEBUG: Current Project={PROJECT_ID}, Location={LOCATION}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/status', methods=['GET'])
