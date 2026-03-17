@@ -41,8 +41,8 @@ def generate():
         location = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-central1')
         token = get_access_token()
 
-        # Veo 3.1 专用预测接口
-        url = f"https://{location}-aiplatform.googleapis.com/v1/projects/{project_id}/locations/{location}/publishers/google/models/veo-3.1-generate-001:predictLongRunning"
+        # Veo 3.1 专用预测接口（必须使用 v1beta1 支持 UUID 格式 operation ID）
+        url = f"https://{location}-aiplatform.googleapis.com/v1beta1/projects/{project_id}/locations/{location}/publishers/google/models/veo-3.1-generate-001:predictLongRunning"
         
         payload = {
             "instances": [{"prompt": prompt}],
@@ -76,10 +76,10 @@ def check_status():
         # 这种路径是专门为 Long Running Operations 准备的顶级路径
         query_path = f"projects/{project_id}/locations/{location}/operations/{op_id}"
         
-        # 关键：域名必须是区域域名，路径必须是简洁路径
-        url = f"https://{location}-aiplatform.googleapis.com/v1/{query_path}"
+        # 关键：域名必须是区域域名，路径必须是简洁路径（必须使用 v1beta1 支持 UUID）
+        url = f"https://{location}-aiplatform.googleapis.com/v1beta1/{query_path}"
         
-        logger.info(f"📡 最终尝试（混合模式）: {url}")
+        logger.info(f"📡 最终尝试（混合模式 v1beta1）: {url}")
         
         # 发送请求
         res = http_requests.get(url, headers={
@@ -90,7 +90,7 @@ def check_status():
         # 如果还是报 400/404，尝试全局 Endpoint
         if res.status_code != 200:
             logger.warning(f"⚠️ 区域请求失败 ({res.status_code})，尝试全局 Endpoint...")
-            global_url = f"https://aiplatform.googleapis.com/v1/{query_path}"
+            global_url = f"https://aiplatform.googleapis.com/v1beta1/{query_path}"
             res = http_requests.get(global_url, headers={"Authorization": f"Bearer {token}"})
             
             if res.status_code != 200:
