@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # 初始化 Vertex AI SDK
-# 注意：us-central1 对 Veo 2.0 支持最稳定
 PROJECT_ID = os.getenv('GOOGLE_CLOUD_PROJECT', 'red-atlas-490409-v1').strip()
 LOCATION = os.getenv('GOOGLE_CLOUD_LOCATION', 'us-central1').strip()
 
@@ -35,38 +34,40 @@ def generate():
         if not prompt:
             return jsonify({'success': False, 'error': '请提供提示词'}), 400
         
-        logger.info(f"📡 提交 Veo 2.0 生成请求：{prompt[:50]}...")
+        # 再次确保没有空格干扰
+        current_loc = LOCATION.strip()
+        logger.info(f"📡 强行调用 Veo 3.1 (Region: {current_loc}): {prompt[:50]}...")
+
+        # 1. 强制指定 v1beta1 API 端点
+        client_options = {"api_endpoint": f"{current_loc}-aiplatform.googleapis.com"}
         
-        # 1. 显式初始化，确保 project 和 location 被锁定
-        # 建议使用 us-central1，因为 2.0 在这里的资源最丰富
-        aiplatform.init(project=PROJECT_ID, location=LOCATION)
-        logger.info(f"✅ aiplatform 初始化成功")
+        from google.cloud import aiplatform_v1beta1
+        client = aiplatform_v1beta1.PredictionServiceClient(client_options=client_options)
         
-        # 2. 【核心修改】将模型 ID 改为 2.0 版本
-        # 路径格式：publishers/google/models/veo-2.0-generate-001
-        resource_id = f"projects/{PROJECT_ID}/locations/{LOCATION}/publishers/google/models/veo-2.0-generate-001"
+        # 2. 使用你在 Model Garden 看到的 3.1 ID
+        resource_id = f"projects/{PROJECT_ID}/locations/{current_loc}/publishers/google/models/veo-3.1-generate-001"
         
-        # 3. 直接使用 Model 对象加载
-        model = aiplatform.Model(model_name=resource_id)
-        
-        # 4. 发起异步生成
-        # Veo 2.0 的参数结构与 3.1 基本一致，但兼容性更好
-        response = model.predict_long_running(
-            instances=[{"prompt": prompt}],
-            parameters={
-                "sampleCount": 1,  # 生成 1 个视频
-                "aspectRatio": "16:9",  # 比例
-                "durationSeconds": 5,  # 时长
-                "outputConfig": {
-                    "gcsDestination": {
-                        "outputUriPrefix": "gs://red-atlas-video-assets/outputs/"
-                    }
+        # 3. 构造请求体
+        instance = {"prompt": prompt}
+        parameters = {
+            "aspectRatio": "16:9",
+            "durationSeconds": 5,
+            "outputConfig": {
+                "gcsDestination": {
+                    "outputUriPrefix": "gs://red-atlas-video-assets/outputs/"
                 }
             }
+        }
+        
+        # 4. 发起异步调用
+        response = client.predict_long_running(
+            endpoint=resource_id,
+            instances=[instance],
+            parameters=parameters
         )
         
         operation_name = response.operation.name
-        logger.info(f"✅ Veo 2.0 任务已提交，operation: {operation_name}")
+        logger.info(f"✅ Veo 3.1 任务已强行提交：{operation_name}")
         
         return jsonify({
             'success': True,
@@ -74,7 +75,9 @@ def generate():
         })
         
     except Exception as e:
-        logger.error(f"❌ 生成失败：{str(e)}")
+        logger.error(f"❌ 3.1 强行调用失败：{str(e)}")
+        # 打印调试信息，看看到底是哪个端点在报错
+        logger.error(f"DEBUG - Project: {PROJECT_ID}, Loc: {current_loc}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/status', methods=['GET'])
