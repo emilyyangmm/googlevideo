@@ -52,9 +52,7 @@
                 </div>
             </div>
 
-            <button id="generateBtn" onclick="generateVideo()" class="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-4 rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all transform hover:scale-105 shadow-lg">
-                🚀 开始生成视频
-            </button>
+            <button id="generateBtn" onclick="generateVideo()" class="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-4 rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all transform hover:scale-105 shadow-lg">🚀 开始生成视频</button>
 
             <div id="status" class="mt-6 hidden">
                 <div class="flex items-center justify-center mb-4">
@@ -103,44 +101,39 @@
                 return;
             }
 
-            // 重置 UI
             document.getElementById('status').classList.remove('hidden');
             document.getElementById('result').classList.add('hidden');
             document.getElementById('error').classList.add('hidden');
-            document.getElementById('generateBtn').disabled = true;
-            document.getElementById('generateBtn').classList.add('opacity-50');
             document.getElementById('progressBar').style.width = '5%';
             document.getElementById('statusText').textContent = '正在提交任务...';
+            disableBtn();
 
             try {
-                // 第一步：提交任务，只拿 operation_name（快速返回，不等视频生成完）
                 const response = await fetch('/generate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ prompt, duration, aspect_ratio: aspectRatio })
                 });
+
                 const data = await response.json();
 
                 if (!data.success) {
                     throw new Error(data.error || '提交失败');
                 }
 
-                // 如果后端同步等待直接返回了结果
-                if (data.gcs_uri) {
-                    showResult(data.gcs_uri);
+                if (data.gcs_uri || data.video_url) {
+                    showResult(data);
                     resetBtn();
                     document.getElementById('status').classList.add('hidden');
                     return;
                 }
 
-                // 否则用 operation_name 轮询
                 operationName = data.operation_name;
-                if (!operationName) {
-                    throw new Error('未获取到任务 ID');
-                }
+                if (!operationName) throw new Error('未获取到任务 ID');
 
                 document.getElementById('statusText').textContent = '任务已提交，等待生成中...';
                 startPolling();
+
             } catch (error) {
                 showError(error.message);
                 resetBtn();
@@ -149,73 +142,69 @@
 
         function startPolling() {
             let progress = 10;
+            let elapsed = 0;
             const progressBar = document.getElementById('progressBar');
             const statusText = document.getElementById('statusText');
-            let elapsed = 0;
 
             checkInterval = setInterval(async () => {
                 elapsed += 8;
                 try {
-                    // 对应后端 /status?operation_name=...
                     const response = await fetch(
                         '/status?operation_name=' + encodeURIComponent(operationName)
                     );
                     const data = await response.json();
 
-                    if (!data.success && data.done !== false) {
-                        // 真正的错误
-                        clearInterval(checkInterval);
-                        showError(data.error || '查询状态失败');
+                    if (data.done === false) {
+                        progress = Math.min(progress + 4, 92);
+                        progressBar.style.width = progress + '%';
+                        statusText.textContent = `生成中... 已等待约 ${elapsed} 秒`;
+                        return;
+                    }
+
+                    clearInterval(checkInterval);
+
+                    if (!data.success) {
+                        showError(data.error || '生成失败');
                         resetBtn();
                         return;
                     }
 
-                    if (data.done) {
-                        clearInterval(checkInterval);
-                        progressBar.style.width = '100%';
-                        showResult(data.gcs_uri || '');
-                        resetBtn();
-                        document.getElementById('status').classList.add('hidden');
-                    } else {
-                        // 还在生成中，进度条缓慢推进
-                        progress = Math.min(progress + 4, 92);
-                        progressBar.style.width = progress + '%';
-                        statusText.textContent = `生成中... 已等待约 ${elapsed} 秒`;
-                    }
+                    progressBar.style.width = '100%';
+                    document.getElementById('status').classList.add('hidden');
+                    showResult(data);
+                    resetBtn();
+
                 } catch (error) {
                     clearInterval(checkInterval);
                     showError('查询状态失败：' + error.message);
                     resetBtn();
                 }
-            }, 8000); // 每 8 秒轮询一次
+            }, 8000);
         }
 
-        function showResult(videoUri) {
+        function showResult(data) {
             document.getElementById('result').classList.remove('hidden');
             const container = document.getElementById('videoContainer');
 
-            if (!videoUri) {
-                container.innerHTML = '<p class="text-gray-500">视频已生成，但未获取到下载链接，请到 GCS 桶查看。</p>';
-                return;
-            }
-
-            if (videoUri.startsWith('gs://')) {
-                const httpUri = 'https://storage.cloud.google.com/' + videoUri.replace('gs://', '');
+            if (data.video_url) {
                 container.innerHTML = `
-                    <p class="text-gray-700">视频已存储在 Google Cloud Storage：</p>
-                    <p class="text-purple-600 font-mono text-sm mt-2 break-all">${videoUri}</p>
-                    <p class="text-gray-500 text-sm mt-2">命令行下载：</p>
-                    <code class="bg-gray-100 px-3 py-2 rounded text-sm block mt-1 break-all">gcloud storage cp ${videoUri} video.mp4</code>
-                `;
-                document.getElementById('downloadLink').href = httpUri;
-            } else {
-                container.innerHTML = `
-                    <video controls class="w-full max-w-md mx-auto rounded-lg shadow-lg">
-                        <source src="${videoUri}" type="video/mp4">
+                    <video controls autoplay class="w-full max-w-md mx-auto rounded-lg shadow-lg">
+                        <source src="${data.video_url}" type="video/mp4">
                         您的浏览器不支持视频播放
                     </video>
                 `;
-                document.getElementById('downloadLink').href = videoUri;
+                document.getElementById('downloadLink').href = data.video_url;
+            } else if (data.gcs_uri) {
+                const httpUri = 'https://storage.cloud.google.com/' + data.gcs_uri.replace('gs://', '');
+                container.innerHTML = `
+                    <p class="text-gray-700">视频已存储在 Google Cloud Storage：</p>
+                    <p class="text-purple-600 font-mono text-sm mt-2 break-all">${data.gcs_uri}</p>
+                    <p class="text-gray-500 text-sm mt-2">命令行下载：</p>
+                    <code class="bg-gray-100 px-3 py-2 rounded text-sm block mt-1 break-all">gcloud storage cp ${data.gcs_uri} video.mp4</code>
+                `;
+                document.getElementById('downloadLink').href = httpUri;
+            } else {
+                container.innerHTML = '<p class="text-gray-500">视频已生成，但未获取到链接。</p>';
             }
         }
 
@@ -223,6 +212,11 @@
             document.getElementById('error').classList.remove('hidden');
             document.getElementById('errorMessage').textContent = message;
             document.getElementById('status').classList.add('hidden');
+        }
+
+        function disableBtn() {
+            document.getElementById('generateBtn').disabled = true;
+            document.getElementById('generateBtn').classList.add('opacity-50');
         }
 
         function resetBtn() {
